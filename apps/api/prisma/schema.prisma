@@ -1,0 +1,360 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum BusinessRole {
+  OWNER
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+enum CrawlStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  OPPORTUNITY
+}
+
+enum WorkflowStatus {
+  OPEN
+  IN_PROGRESS
+  APPROVED
+  REJECTED
+  DISMISSED
+  COMPLETED
+}
+
+enum ContentStatus {
+  IDEA
+  DRAFT
+  NEEDS_REVIEW
+  APPROVED
+  PUBLISHED
+  REJECTED
+}
+
+enum ContentType {
+  SEO_ARTICLE
+  WEBSITE_REWRITE
+  FACEBOOK_POST
+  LINKEDIN_POST
+  REDDIT_RESPONSE
+  CAMPAIGN_IDEA
+  EMAIL_NEWSLETTER
+  SOCIAL_POST
+}
+
+enum AutomationMode {
+  RECOMMEND_ONLY
+  APPROVAL_REQUIRED
+  AUTO_LOW_RISK
+}
+
+enum ConnectionProvider {
+  NONE
+  WORDPRESS
+  SHOPIFY
+  CUSTOM
+}
+
+enum ConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum ChangeStatus {
+  PROPOSED
+  APPROVED
+  APPLYING
+  APPLIED
+  VERIFIED
+  FAILED
+  REVERTED
+}
+
+model User {
+  id           String           @id @default(uuid()) @db.Char(36)
+  email        String           @unique @db.VarChar(255)
+  name         String           @db.VarChar(100)
+  passwordHash String           @map("password_hash") @db.VarChar(255)
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  businesses   BusinessMember[]
+  activities   ActivityLog[]
+
+  @@map("users")
+}
+
+model Business {
+  id               String           @id @default(uuid()) @db.Char(36)
+  name             String           @db.VarChar(150)
+  slug             String           @unique @db.VarChar(170)
+  websiteUrl       String           @map("website_url") @db.VarChar(2048)
+  description      String           @db.Text
+  industry         String           @db.VarChar(150)
+  location         String           @db.VarChar(250)
+  targetAudience   String           @map("target_audience") @db.Text
+  productsServices String           @map("products_services") @db.Text
+  primaryGoal      String           @map("primary_goal") @db.Text
+  secondaryGoals   Json             @map("secondary_goals")
+  brandTone        String           @map("brand_tone") @db.Text
+  keywords         Json
+  mainCta          String           @map("main_cta") @db.VarChar(500)
+  archivedAt       DateTime?        @map("archived_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  members          BusinessMember[]
+  brandVoice       BrandVoice?
+  website          Website?
+  content          ContentItem[]
+  recommendations  Recommendation[]
+  seoIssues        SeoIssue[]
+  activities       ActivityLog[]
+  marketingPlans   MarketingPlan[]
+
+  @@map("businesses")
+}
+
+model BusinessMember {
+  userId     String       @map("user_id") @db.Char(36)
+  businessId String       @map("business_id") @db.Char(36)
+  role       BusinessRole @default(OWNER)
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@id([userId, businessId])
+  @@map("business_members")
+}
+
+model BrandVoice {
+  id                String   @id @default(uuid()) @db.Char(36)
+  businessId        String   @unique @map("business_id") @db.Char(36)
+  tone              String   @db.Text
+  formality         Int      @default(3)
+  humourLevel       Int      @default(2) @map("humour_level")
+  preferredPhrases  Json     @map("preferred_phrases")
+  prohibitedPhrases Json     @map("prohibited_phrases")
+  targetCustomer    String   @map("target_customer") @db.Text
+  ctaStyle          String   @map("cta_style") @db.Text
+  spellingStyle     String   @default("Australian English") @map("spelling_style") @db.VarChar(100)
+  instructions      String   @db.Text
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("brand_voices")
+}
+
+model Website {
+  id                 String             @id @default(uuid()) @db.Char(36)
+  businessId         String             @unique @map("business_id") @db.Char(36)
+  baseUrl            String             @map("base_url") @db.VarChar(2048)
+  lastCrawledAt      DateTime?          @map("last_crawled_at")
+  healthScore        Int?               @map("health_score")
+  automationMode     AutomationMode     @default(RECOMMEND_ONLY) @map("automation_mode")
+  automationRules    Json?              @map("automation_rules")
+  connectionProvider ConnectionProvider @default(NONE) @map("connection_provider")
+  connectionStatus   ConnectionStatus   @default(DISCONNECTED) @map("connection_status")
+  business           Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  crawls             WebsiteCrawl[]
+  pages              WebsitePage[]
+  changes            WebsiteChange[]
+
+  @@map("websites")
+}
+
+model WebsiteChange {
+  id               String       @id @default(uuid()) @db.Char(36)
+  websiteId        String       @map("website_id") @db.Char(36)
+  seoIssueId       String?      @map("seo_issue_id") @db.Char(36)
+  recommendationId String?      @map("recommendation_id") @db.Char(36)
+  targetUrl        String       @map("target_url") @db.VarChar(2048)
+  targetField      String       @map("target_field") @db.VarChar(100)
+  beforeValue      String?      @map("before_value") @db.LongText
+  proposedValue    String       @map("proposed_value") @db.LongText
+  appliedValue     String?      @map("applied_value") @db.LongText
+  status           ChangeStatus @default(PROPOSED)
+  approvedById     String?      @map("approved_by_id") @db.Char(36)
+  approvedAt       DateTime?    @map("approved_at")
+  appliedAt        DateTime?    @map("applied_at")
+  verifiedAt       DateTime?    @map("verified_at")
+  failureReason    String?      @map("failure_reason") @db.Text
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  website          Website      @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId, status])
+  @@map("website_changes")
+}
+
+model WebsiteCrawl {
+  id           String        @id @default(uuid()) @db.Char(36)
+  websiteId    String        @map("website_id") @db.Char(36)
+  status       CrawlStatus   @default(QUEUED)
+  startedAt    DateTime?     @map("started_at")
+  completedAt  DateTime?     @map("completed_at")
+  pagesFound   Int           @default(0) @map("pages_found")
+  pagesCrawled Int           @default(0) @map("pages_crawled")
+  error        String?       @db.Text
+  website      Website       @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  pages        WebsitePage[]
+
+  @@map("website_crawls")
+}
+
+model WebsitePage {
+  id              String           @id @default(uuid()) @db.Char(36)
+  websiteId       String           @map("website_id") @db.Char(36)
+  crawlId         String           @map("crawl_id") @db.Char(36)
+  url             String           @db.VarChar(2048)
+  statusCode      Int              @map("status_code")
+  title           String?          @db.VarChar(512)
+  metaDescription String?          @map("meta_description") @db.Text
+  canonicalUrl    String?          @map("canonical_url") @db.VarChar(2048)
+  h1              Json
+  h2              Json
+  h3              Json
+  visibleText     String           @map("visible_text") @db.LongText
+  wordCount       Int              @map("word_count")
+  images          Json
+  openGraph       Json             @map("open_graph")
+  fetchedAt       DateTime         @default(now()) @map("fetched_at")
+  website         Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  crawl           WebsiteCrawl     @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  linksFrom       WebsiteLink[]    @relation("from_page")
+  seoIssues       SeoIssue[]
+  content         ContentItem[]
+  recommendations Recommendation[]
+
+  @@unique([crawlId, url(length: 500)])
+  @@index([websiteId])
+  @@map("website_pages")
+}
+
+model WebsiteLink {
+  id         String      @id @default(uuid()) @db.Char(36)
+  fromPageId String      @map("from_page_id") @db.Char(36)
+  targetUrl  String      @map("target_url") @db.VarChar(2048)
+  isInternal Boolean     @map("is_internal")
+  statusCode Int?        @map("status_code")
+  anchorText String      @map("anchor_text") @db.Text
+  fromPage   WebsitePage @relation("from_page", fields: [fromPageId], references: [id], onDelete: Cascade)
+
+  @@index([targetUrl(length: 500)])
+  @@map("website_links")
+}
+
+model SeoIssue {
+  id              String         @id @default(uuid()) @db.Char(36)
+  businessId      String         @map("business_id") @db.Char(36)
+  pageId          String?        @map("page_id") @db.Char(36)
+  severity        Severity
+  category        String         @db.VarChar(100)
+  title           String         @db.VarChar(255)
+  explanation     String         @db.Text
+  suggestedAction String         @map("suggested_action") @db.Text
+  status          WorkflowStatus @default(OPEN)
+  fingerprint     String         @unique @db.VarChar(255)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  business        Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  page            WebsitePage?   @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@map("seo_issues")
+}
+
+model Recommendation {
+  id            String         @id @default(uuid()) @db.Char(36)
+  businessId    String         @map("business_id") @db.Char(36)
+  pageId        String?        @map("page_id") @db.Char(36)
+  source        String         @db.VarChar(50)
+  category      String         @db.VarChar(100)
+  severity      Severity
+  title         String         @db.VarChar(255)
+  description   String         @db.Text
+  currentValue  String?        @map("current_value") @db.LongText
+  proposedValue String?        @map("proposed_value") @db.LongText
+  status        WorkflowStatus @default(OPEN)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  page          WebsitePage?   @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@map("recommendations")
+}
+
+model ContentItem {
+  id          String        @id @default(uuid()) @db.Char(36)
+  businessId  String        @map("business_id") @db.Char(36)
+  pageId      String?       @map("page_id") @db.Char(36)
+  title       String        @db.VarChar(255)
+  type        ContentType
+  status      ContentStatus @default(DRAFT)
+  body        String        @db.LongText
+  metadata    Json?
+  tags        Json
+  notes       String        @db.Text
+  aiGenerated Boolean       @default(false) @map("ai_generated")
+  scheduledAt DateTime?     @map("scheduled_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  page        WebsitePage?  @relation(fields: [pageId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, status, type])
+  @@map("content_items")
+}
+
+model MarketingPlan {
+  id         String              @id @default(uuid()) @db.Char(36)
+  businessId String              @map("business_id") @db.Char(36)
+  name       String              @db.VarChar(255)
+  startsAt   DateTime            @map("starts_at")
+  endsAt     DateTime            @map("ends_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+  business   Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  items      MarketingPlanItem[]
+
+  @@map("marketing_plans")
+}
+
+model MarketingPlanItem {
+  id          String         @id @default(uuid()) @db.Char(36)
+  planId      String         @map("plan_id") @db.Char(36)
+  title       String         @db.VarChar(255)
+  type        String         @db.VarChar(100)
+  rationale   String         @db.Text
+  status      WorkflowStatus @default(OPEN)
+  scheduledAt DateTime?      @map("scheduled_at")
+  plan        MarketingPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("marketing_plan_items")
+}
+
+model ActivityLog {
+  id         String    @id @default(uuid()) @db.Char(36)
+  businessId String?   @map("business_id") @db.Char(36)
+  userId     String?   @map("user_id") @db.Char(36)
+  action     String    @db.VarChar(100)
+  entityType String?   @map("entity_type") @db.VarChar(100)
+  entityId   String?   @map("entity_id") @db.Char(36)
+  metadata   Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@map("activity_logs")
+}
