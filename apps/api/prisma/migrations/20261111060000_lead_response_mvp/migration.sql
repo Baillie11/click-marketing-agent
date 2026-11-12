@@ -55,7 +55,7 @@ CREATE TABLE `business_outreach_policies` (
   `id` CHAR(36) NOT NULL, `business_id` CHAR(36) NOT NULL, `version` INTEGER NOT NULL DEFAULT 1,
   `speaker_name` VARCHAR(100) NOT NULL DEFAULT '', `speaker_role` VARCHAR(150) NOT NULL DEFAULT '',
   `allow_business_name` BOOLEAN NOT NULL DEFAULT true, `allow_public_links` BOOLEAN NOT NULL DEFAULT false,
-  `allowed_urls` JSON NOT NULL, `approved_claims` JSON NOT NULL, `cta_style` TEXT NOT NULL DEFAULT 'Helpful and low pressure',
+  `allowed_urls` JSON NOT NULL, `approved_claims` JSON NOT NULL, `cta_style` TEXT NOT NULL,
   `excluded_topics` JSON NOT NULL, `max_reply_length` INTEGER NOT NULL DEFAULT 1200, `updated_by_id` CHAR(36) NOT NULL,
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updated_at` DATETIME(3) NOT NULL,
   UNIQUE INDEX `business_outreach_policies_business_id_key` (`business_id`), PRIMARY KEY (`id`)
