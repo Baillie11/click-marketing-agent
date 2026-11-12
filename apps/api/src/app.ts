@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, relative, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import {
   businessSchema,
   contentSchema,
@@ -167,6 +168,58 @@ export const buildApp = async (config: Config) => {
         .send({ status: 'not-ready', checks: { database: 'failed' }, ...productVersion });
     }
   });
+  app.post(
+    '/api/integrations/mail-monitor/contacts',
+    { config: { rateLimit: { max: 300, timeWindow: '1 minute' } } },
+    async (request, reply) => {
+      const authorization = request.headers.authorization;
+      if (!authorization?.startsWith('Bearer '))
+        return reply.code(401).send({ error: 'Integration token required' });
+      const tokenHash = createHash('sha256').update(authorization.slice(7).trim()).digest('hex');
+      const integration = await db.integrationToken.findFirst({
+        where: { tokenHash, revokedAt: null },
+      });
+      if (!integration) return reply.code(401).send({ error: 'Invalid integration token' });
+      const input = z
+        .object({
+          businessId: z.string().uuid(),
+          email: z.string().trim().email().max(255),
+          contactName: z.string().trim().max(150).default(''),
+          businessName: z.string().trim().max(150).default(''),
+          contactNumber: z.string().trim().max(50).default(''),
+          source: z.literal('click-mail-monitor'),
+          sourceId: z.string().trim().min(1).max(255),
+        })
+        .parse(request.body);
+      if (input.businessId !== integration.businessId)
+        return reply.code(403).send({ error: 'Token is not authorised for this business' });
+      const normalizedEmail = input.email.toLowerCase();
+      const contact = await db.$transaction(async (tx) => {
+        await tx.integrationToken.update({
+          where: { id: integration.id },
+          data: { lastUsedAt: new Date() },
+        });
+        const existing = await tx.contact.findUnique({
+          where: { businessId_normalizedEmail: { businessId: input.businessId, normalizedEmail } },
+        });
+        if (existing?.suppressedAt) return existing;
+        if (existing)
+          return tx.contact.update({
+            where: { id: existing.id },
+            data: {
+              contactName: existing.contactName || input.contactName,
+              businessName: existing.businessName || input.businessName,
+              contactNumber: existing.contactNumber || input.contactNumber,
+              source: existing.source ?? input.source,
+              sourceId: existing.sourceId ?? input.sourceId,
+            },
+          });
+        return tx.contact.create({ data: { ...input, normalizedEmail } });
+      });
+      if (contact.suppressedAt) return reply.code(204).send();
+      return reply.send({ id: contact.id });
+    },
+  );
   app.post(
     '/api/auth/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -421,13 +474,11 @@ export const buildApp = async (config: Config) => {
           entityId: existing.id,
           metadata: { role: input.role },
         });
-        return reply
-          .code(201)
-          .send({
-            user: { id: existing.id, name: existing.name, email: existing.email },
-            role: input.role,
-            existingAccount: true,
-          });
+        return reply.code(201).send({
+          user: { id: existing.id, name: existing.name, email: existing.email },
+          role: input.role,
+          existingAccount: true,
+        });
       }
 
       const temporarySecret = createPasswordResetToken().token;
@@ -548,6 +599,7 @@ export const buildApp = async (config: Config) => {
       return db.contact.findMany({
         where: {
           businessId: request.params.id,
+          suppressedAt: null,
           ...(search
             ? {
                 OR: [
@@ -569,8 +621,13 @@ export const buildApp = async (config: Config) => {
     async (request: any, reply) => {
       if (!(await canEdit(request.user.sub, request.params.id)))
         return reply.code(404).send({ error: 'Business not found' });
+      const input = contactSchema.parse(request.body);
       const contact = await db.contact.create({
-        data: { businessId: request.params.id, ...contactSchema.parse(request.body) },
+        data: {
+          businessId: request.params.id,
+          ...input,
+          normalizedEmail: input.email.toLowerCase(),
+        },
       });
       return reply.code(201).send(contact);
     },
@@ -585,9 +642,10 @@ export const buildApp = async (config: Config) => {
         where: { id: request.params.contactId, businessId: request.params.id },
       });
       if (!existing) return reply.code(404).send({ error: 'Contact not found' });
+      const input = contactSchema.parse(request.body);
       return db.contact.update({
         where: { id: existing.id },
-        data: contactSchema.parse(request.body),
+        data: { ...input, normalizedEmail: input.email.toLowerCase() },
       });
     },
   );
@@ -601,7 +659,7 @@ export const buildApp = async (config: Config) => {
         where: { id: request.params.contactId, businessId: request.params.id },
       });
       if (!existing) return reply.code(404).send({ error: 'Contact not found' });
-      await db.contact.delete({ where: { id: existing.id } });
+      await db.contact.update({ where: { id: existing.id }, data: { suppressedAt: new Date() } });
       return reply.code(204).send();
     },
   );
@@ -999,12 +1057,10 @@ export const buildApp = async (config: Config) => {
       if (!(await canManage(request.user.sub, request.params.id)))
         return reply.code(404).send({ error: 'Business not found' });
       if (!config.CONNECTOR_ENCRYPTION_KEY)
-        return reply
-          .code(503)
-          .send({
-            error:
-              'Connector encryption is not configured. Add CONNECTOR_ENCRYPTION_KEY and restart the API.',
-          });
+        return reply.code(503).send({
+          error:
+            'Connector encryption is not configured. Add CONNECTOR_ENCRYPTION_KEY and restart the API.',
+        });
       const input = z
         .object({
           username: z.string().trim().min(1).max(255),
@@ -1360,19 +1416,14 @@ export const buildApp = async (config: Config) => {
         return reply.code(404).send({ error: 'Business not found' });
       const website = await db.website.findUnique({ where: { businessId: request.params.id } });
       if (!website || website.connectionStatus !== 'CONNECTED')
-        return reply
-          .code(400)
-          .send({
-            error:
-              'WordPress site is not connected. Connect your site in Automation Settings first.',
-          });
+        return reply.code(400).send({
+          error: 'WordPress site is not connected. Connect your site in Automation Settings first.',
+        });
       if (website.connectionTarget !== 'STAGING')
-        return reply
-          .code(400)
-          .send({
-            error:
-              'Bulk auto-fix is restricted to a verified staging website. Live-site writes are disabled.',
-          });
+        return reply.code(400).send({
+          error:
+            'Bulk auto-fix is restricted to a verified staging website. Live-site writes are disabled.',
+        });
 
       const latestCrawl = await db.websiteCrawl.findFirst({
         where: { websiteId: website.id, status: 'COMPLETED' },
@@ -1494,12 +1545,10 @@ export const buildApp = async (config: Config) => {
       if (change.website.connectionStatus !== 'CONNECTED')
         return reply.code(409).send({ error: 'The website is not connected for publishing' });
       if (change.website.connectionTarget !== 'STAGING' || change.targetEnvironment !== 'STAGING')
-        return reply
-          .code(409)
-          .send({
-            error:
-              'Prepared change execution is restricted to the verified staging website. Live-site writes are disabled.',
-          });
+        return reply.code(409).send({
+          error:
+            'Prepared change execution is restricted to the verified staging website. Live-site writes are disabled.',
+        });
       const publisher = await getPublisher(change.websiteId, config.CONNECTOR_ENCRYPTION_KEY);
       if (!publisher)
         return reply
@@ -1896,11 +1945,9 @@ export const buildApp = async (config: Config) => {
     { preHandler: requireAuth, config: { rateLimit: { max: 10, timeWindow: '1 hour' } } },
     async (request: any, reply) => {
       if (!ai)
-        return reply
-          .code(503)
-          .send({
-            error: 'AI generation is not configured. You can still write a reply manually.',
-          });
+        return reply.code(503).send({
+          error: 'AI generation is not configured. You can still write a reply manually.',
+        });
       const lead = await db.leadOpportunity.findUnique({ where: { id: request.params.id } });
       if (!lead || !(await canEdit(request.user.sub, lead.businessId)))
         return reply.code(404).send({ error: 'Opportunity not found' });
@@ -1934,11 +1981,9 @@ export const buildApp = async (config: Config) => {
       if (!result.suggestedReply)
         return reply.send({ suggestion: result, lead: await leadDetail(lead.id) });
       if (result.suggestedReply.length > policyValue.maxReplyLength)
-        return reply
-          .code(422)
-          .send({
-            error: `Generated reply exceeded the ${policyValue.maxReplyLength}-character policy limit`,
-          });
+        return reply.code(422).send({
+          error: `Generated reply exceeded the ${policyValue.maxReplyLength}-character policy limit`,
+        });
       await createRevision({
         leadId: lead.id,
         body: result.suggestedReply,
@@ -2242,11 +2287,9 @@ export const buildApp = async (config: Config) => {
     });
     if (!item) return reply.code(404).send({ error: 'Content not found' });
     if (await db.leadReply.findUnique({ where: { contentItemId: item.id } }))
-      return reply
-        .code(409)
-        .send({
-          error: 'Edit this item from Lead Opportunities so approval history remains accurate',
-        });
+      return reply.code(409).send({
+        error: 'Edit this item from Lead Opportunities so approval history remains accurate',
+      });
     if (!(await canEdit(request.user.sub, item.businessId)))
       return reply.code(403).send({ error: 'Editor access is required' });
     const input = contentSchema.partial().parse(request.body);
