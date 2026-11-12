@@ -2211,6 +2211,36 @@ section {
   border-radius: 8px;
   padding: 12px;
 }
+.password-input {
+  position: relative;
+}
+.password-input input {
+  padding-right: 44px;
+}
+.password-visibility {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.password-visibility:hover {
+  background: #eef4fb;
+  color: #176fe3;
+}
+.password-visibility:focus-visible {
+  outline: 2px solid #176fe3;
+  outline-offset: 2px;
+}
 .auth form .primary {
   width: 100%;
   justify-content: center;

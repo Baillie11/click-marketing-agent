@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type InputHTMLAttributes } from 'react';
 import { Routes, Route, NavLink, Navigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -26,6 +26,8 @@ import {
   ContactRound,
   Pencil,
   Trash2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { api } from './api';
 import { PRODUCT_VERSION_LABEL } from '@click/shared/version';
@@ -58,6 +60,25 @@ const nav = [
   { label: 'Approvals & Actions', icon: Inbox, to: '/approvals-actions' },
   { label: 'Account Settings', icon: Settings, to: '/settings' },
 ];
+
+function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div className="password-input">
+      <input {...props} type={visible ? 'text' : 'password'} />
+      <button
+        type="button"
+        className="password-visibility"
+        onClick={() => setVisible((value) => !value)}
+        aria-label={visible ? 'Hide password' : 'Show password'}
+        title={visible ? 'Hide password' : 'Show password'}
+      >
+        {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+      </button>
+    </div>
+  );
+}
 function Shell({ ctx }: { ctx: Ctx }) {
   const [open, setOpen] = useState(false);
   const initials = ctx.user.name
@@ -1495,8 +1516,7 @@ function AutomationPanel({ businessId, value, onChange }: any) {
                 </label>
                 <label>
                   Application Password
-                  <input
-                    type="password"
+                  <PasswordInput
                     autoComplete="new-password"
                     value={wpPassword}
                     onChange={(e) => setWpPassword(e.target.value)}
@@ -3442,8 +3462,7 @@ function AccountSettings({ ctx }: { ctx: Ctx }) {
           </label>
           <label>
             Current password
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               value={profile.currentPassword}
               onChange={(event) => setProfile({ ...profile, currentPassword: event.target.value })}
@@ -3478,8 +3497,7 @@ function AccountSettings({ ctx }: { ctx: Ctx }) {
           </div>
           <label>
             Current password
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="current-password"
               value={passwords.currentPassword}
               onChange={(event) =>
@@ -3490,8 +3508,7 @@ function AccountSettings({ ctx }: { ctx: Ctx }) {
           </label>
           <label>
             New password
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               value={passwords.newPassword}
               onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })}
@@ -3503,8 +3520,7 @@ function AccountSettings({ ctx }: { ctx: Ctx }) {
           </label>
           <label>
             Confirm new password
-            <input
-              type="password"
+            <PasswordInput
               autoComplete="new-password"
               value={passwords.confirmPassword}
               onChange={(event) =>
@@ -3745,9 +3761,8 @@ function Auth({ done }: { done: () => void }) {
         {mode !== 'forgot' && (
           <label>
             Password
-            <input
+            <PasswordInput
               name="password"
-              type="password"
               minLength={10}
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               required
@@ -3838,9 +3853,8 @@ function ResetPassword({ done }: { done: () => void }) {
           <>
             <label>
               New password
-              <input
+              <PasswordInput
                 name="newPassword"
-                type="password"
                 minLength={10}
                 maxLength={128}
                 autoComplete="new-password"
@@ -3849,9 +3863,8 @@ function ResetPassword({ done }: { done: () => void }) {
             </label>
             <label>
               Confirm new password
-              <input
+              <PasswordInput
                 name="confirmPassword"
-                type="password"
                 minLength={10}
                 maxLength={128}
                 autoComplete="new-password"
