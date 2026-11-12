@@ -91,7 +91,12 @@ function Shell({ ctx }: { ctx: Ctx }) {
     <div className="app">
       <aside className={open ? 'open' : ''}>
         <div className="brand">
-          <span>CM</span>
+          <img
+            className="brand-logo"
+            src="/brand/click-marketing-agent-logo.png"
+            alt=""
+            aria-hidden="true"
+          />
           <b>
             Click
             <br />
@@ -3716,7 +3721,7 @@ function Auth({ done }: { done: () => void }) {
       <div className="auth-art">
         <img
           className="login-logo"
-          src="/brand/click-marketing-agent-logo.webp"
+          src="/brand/click-marketing-agent-logo.png"
           alt="Click Marketing Agent — Where marketing just clicks"
         />
         <h1>
@@ -3732,7 +3737,7 @@ function Auth({ done }: { done: () => void }) {
       <form onSubmit={submit}>
         <img
           className="auth-mobile-logo"
-          src="/brand/click-marketing-agent-logo.webp"
+          src="/brand/click-marketing-agent-logo.png"
           alt="Click Marketing Agent"
         />
         <span className="eyebrow">WELCOME</span>
@@ -3831,7 +3836,7 @@ function ResetPassword({ done }: { done: () => void }) {
       <div className="auth-art">
         <img
           className="login-logo"
-          src="/brand/click-marketing-agent-logo.webp"
+          src="/brand/click-marketing-agent-logo.png"
           alt="Click Marketing Agent"
         />
         <h1>

@@ -42,15 +42,14 @@ aside {
   color: white;
   padding: 0 8px 28px;
 }
-.brand > span {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  background: #1473e6;
+.brand-logo {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  padding: 3px;
+  background: white;
   border-radius: 10px;
-  font: 800 12px Manrope;
-  letter-spacing: -1px;
 }
 .brand b {
   font: 700 14px/1.2 Manrope;
