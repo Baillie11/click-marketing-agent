@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { accountPasswordSchema, accountProfileSchema, businessSchema, captureLeadSchema, contentTransitionSchema, forgotPasswordSchema, generateArticleSchema, leadDecisionSchema, manualPublicationSchema, registerSchema, resetPasswordSchema } from '@click/shared';
+import { accountPasswordSchema, accountProfileSchema, businessSchema, captureLeadSchema, contentTransitionSchema, forgotPasswordSchema, generateArticleSchema, leadDecisionSchema, leadDiscoveryProfileSchema, manualPublicationSchema, registerSchema, resetPasswordSchema } from '@click/shared';
 describe('domain validation', () => {
   it('requires strong-enough registration input', () =>
     expect(registerSchema.safeParse({ name: 'A', email: 'bad', password: 'short' }).success).toBe(
@@ -36,5 +36,19 @@ describe('domain validation', () => {
   it('requires publication evidence and an idempotency key', () => {
     expect(manualPublicationSchema.safeParse({ actualText: 'Helpful reply', postingIdentity: 'Andrew', publishedAt: new Date().toISOString(), idempotencyKey: 'publication-1' }).success).toBe(true);
     expect(manualPublicationSchema.safeParse({ actualText: '', postingIdentity: 'A', publishedAt: 'today', idempotencyKey: 'x' }).success).toBe(false);
+  });
+  it('validates lead discovery profiles and limits scan size', () => {
+    expect(leadDiscoveryProfileSchema.safeParse({
+      platforms: ['REDDIT', 'FORUM'],
+      searchTerms: ['resume help'],
+      frequency: 'DAILY',
+      maxResults: 10,
+    }).success).toBe(true);
+    expect(leadDiscoveryProfileSchema.safeParse({
+      platforms: [],
+      searchTerms: [],
+      frequency: 'HOURLY',
+      maxResults: 100,
+    }).success).toBe(false);
   });
 });

@@ -3011,6 +3011,94 @@ section {
 }
 
 /* Lead Opportunities */
+.lead-discovery-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 20px;
+  border: 1px solid #cfe0f4;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f7fbff, #eef6ff);
+}
+.lead-discovery-card h2 {
+  margin: 4px 0 5px;
+  font-size: 20px;
+}
+.lead-discovery-card p {
+  max-width: 720px;
+  margin: 0;
+  color: #5c7086;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.lead-discovery-card small {
+  display: block;
+  margin-top: 8px;
+  color: #58718c;
+}
+.lead-discovery-card .lead-actions {
+  flex: none;
+  margin-top: 0;
+}
+.discovery-form fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.discovery-form legend,
+.discovery-form .editor-field {
+  color: #34475c;
+  font-size: 12px;
+  font-weight: 750;
+}
+.platform-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.platform-options label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #dbe5ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #42566b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.platform-options input {
+  width: auto;
+  margin: 0;
+}
+.discovery-form .editor-field {
+  display: block;
+  margin-top: 15px;
+}
+.discovery-form .editor-field input,
+.discovery-form .editor-field textarea,
+.discovery-form .editor-field select {
+  width: 100%;
+  margin-top: 6px;
+}
+.discovery-form .editor-field small,
+.field-help {
+  display: block;
+  margin: 5px 0 0;
+  color: #748398;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 .lead-safety-note {
   display: flex;
   gap: 13px;
@@ -3221,6 +3309,13 @@ section {
   min-height: 230px;
 }
 @media (max-width: 900px) {
+  .lead-discovery-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
   .lead-workbench {
     grid-template-columns: 1fr;
   }

@@ -138,6 +138,7 @@ model User {
   replyApprovals      LeadReplyApproval[]      @relation("reply_approval_actor")
   replyPublications   LeadReplyPublication[]   @relation("reply_publication_recorded_by")
   outreachPolicies    BusinessOutreachPolicy[] @relation("outreach_policy_updated_by")
+  leadDiscoveryProfiles LeadDiscoveryProfile[] @relation("lead_discovery_profile_updated_by")
 
   @@map("users")
 }
@@ -185,6 +186,8 @@ model Business {
   leadReplies       LeadReply[]
   leadPublications  LeadReplyPublication[]
   outreachPolicy    BusinessOutreachPolicy?
+  leadDiscoveryProfile LeadDiscoveryProfile?
+  leadDiscoveryRuns LeadDiscoveryRun[]
   contacts          Contact[]
   integrationTokens IntegrationToken[]
 
@@ -599,6 +602,43 @@ model BusinessOutreachPolicy {
   updatedBy         User     @relation("outreach_policy_updated_by", fields: [updatedById], references: [id])
 
   @@map("business_outreach_policies")
+}
+
+model LeadDiscoveryProfile {
+  id              String   @id @default(uuid()) @db.Char(36)
+  businessId      String   @unique @map("business_id") @db.Char(36)
+  enabled         Boolean  @default(true)
+  platforms       Json
+  searchTerms     Json     @map("search_terms")
+  intentPhrases   Json     @map("intent_phrases")
+  excludedTerms   Json     @map("excluded_terms")
+  locations       Json
+  frequency       String   @default("MANUAL") @db.VarChar(20)
+  maxResults      Int      @default(10) @map("max_results")
+  lastRunAt       DateTime? @map("last_run_at")
+  nextRunAt       DateTime? @map("next_run_at")
+  updatedById     String   @map("updated_by_id") @db.Char(36)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  updatedBy       User     @relation("lead_discovery_profile_updated_by", fields: [updatedById], references: [id])
+
+  @@map("lead_discovery_profiles")
+}
+
+model LeadDiscoveryRun {
+  id              String   @id @default(uuid()) @db.Char(36)
+  businessId      String   @map("business_id") @db.Char(36)
+  status          String   @default("RUNNING") @db.VarChar(20)
+  discoveredCount Int      @default(0) @map("discovered_count")
+  createdCount    Int      @default(0) @map("created_count")
+  errorMessage    String?  @map("error_message") @db.Text
+  startedAt       DateTime @default(now()) @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, startedAt])
+  @@map("lead_discovery_runs")
 }
 
 model MarketingPlan {

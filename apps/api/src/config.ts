@@ -10,6 +10,7 @@ const schema = z.object({
   JWT_EXPIRES_IN: z.string().default('8h'),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5-mini'),
+  LEAD_DISCOVERY_CRON_SECRET: z.string().min(32).optional(),
   CONNECTOR_ENCRYPTION_KEY: z.string().optional(),
   CRAWLER_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(50),
   CRAWLER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(10000),

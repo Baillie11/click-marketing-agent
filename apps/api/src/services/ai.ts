@@ -31,6 +31,18 @@ export const leadReplyOutputSchema = z.object({
   warnings: z.array(z.string()),
   usedApprovedClaimIds: z.array(z.string()),
 });
+export const leadDiscoveryOutputSchema = z.object({
+  opportunities: z.array(z.object({
+    url: z.string().url(),
+    platform: z.enum(['REDDIT', 'FACEBOOK', 'LINKEDIN', 'THREADS', 'INSTAGRAM', 'AIRTASKER', 'FORUM', 'OTHER']),
+    communityName: z.string().nullable(),
+    authorDisplayName: z.string().nullable(),
+    sourceExcerpt: z.string().min(10),
+    postedAt: z.string().datetime().nullable(),
+    relevanceReason: z.string(),
+    relevanceScore: z.number().int().min(0).max(100),
+  })),
+});
 export const seoSuggestionOutputSchema = z.object({
   targetField: z.string(),
   proposedValue: z.string(),
@@ -139,6 +151,31 @@ const leadReplyJsonSchema = {
     suggestedReply: { type: ['string', 'null'] },
     warnings: { type: 'array', items: { type: 'string' } },
     usedApprovedClaimIds: { type: 'array', items: { type: 'string' } },
+  },
+} as const;
+const leadDiscoveryJsonSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['opportunities'],
+  properties: {
+    opportunities: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['url', 'platform', 'communityName', 'authorDisplayName', 'sourceExcerpt', 'postedAt', 'relevanceReason', 'relevanceScore'],
+        properties: {
+          url: { type: 'string' },
+          platform: { type: 'string', enum: ['REDDIT', 'FACEBOOK', 'LINKEDIN', 'THREADS', 'INSTAGRAM', 'AIRTASKER', 'FORUM', 'OTHER'] },
+          communityName: { type: ['string', 'null'] },
+          authorDisplayName: { type: ['string', 'null'] },
+          sourceExcerpt: { type: 'string' },
+          postedAt: { type: ['string', 'null'] },
+          relevanceReason: { type: 'string' },
+          relevanceScore: { type: 'integer', minimum: 0, maximum: 100 },
+        },
+      },
+    },
   },
 } as const;
 const seoSuggestionJsonSchema = {
@@ -317,6 +354,55 @@ Rules:
       leadReplyJsonSchema,
       leadReplyOutputSchema,
     );
+  }
+  async leadDiscovery(
+    businessId: string,
+    profile: {
+      platforms: string[];
+      searchTerms: string[];
+      intentPhrases: string[];
+      excludedTerms: string[];
+      locations: string[];
+      maxResults: number;
+    },
+  ) {
+    await logActivity('ai.requested', { businessId, metadata: { task: 'lead_discovery' } });
+    try {
+      const response = await this.client.responses.create({
+        model: this.model,
+        instructions: `You find genuine, recent, publicly accessible online posts where a helpful business response may be appropriate. Search the live public web. Never invent a URL, quotation, author, date or community. Ignore private groups, login-only pages, advertisements, directories, brand-owned pages and generic articles. Return an empty array when evidence is insufficient.`,
+        input: `BUSINESS CONTEXT\n${await this.context(businessId)}\n\nDISCOVERY PROFILE\n${JSON.stringify(profile)}\n\nFind at most ${profile.maxResults} public posts that clearly express a relevant need, request, question, recommendation request or buying intent. Search only the selected platforms. Prefer recent Australian results and the configured locations. Exclude any result matching excluded terms. sourceExcerpt must be a short exact excerpt visible in the cited source. Each returned URL must be one you actually opened or retrieved through web search.`,
+        tools: [{ type: 'web_search', search_context_size: 'medium' } as any],
+        tool_choice: 'required',
+        text: { format: { type: 'json_schema', name: 'lead_discovery', strict: true, schema: leadDiscoveryJsonSchema } },
+      });
+      const parsed = leadDiscoveryOutputSchema.parse(JSON.parse(response.output_text));
+      const citedUrls = new Set<string>();
+      for (const item of response.output as any[]) {
+        for (const content of item?.content ?? []) {
+          for (const annotation of content?.annotations ?? []) {
+            if (annotation?.type === 'url_citation' && annotation.url) citedUrls.add(annotation.url);
+          }
+        }
+      }
+      const result = {
+        opportunities: parsed.opportunities
+          .filter((opportunity) => citedUrls.has(opportunity.url))
+          .slice(0, profile.maxResults),
+        citedUrls: [...citedUrls],
+      };
+      await logActivity('ai.succeeded', {
+        businessId,
+        metadata: { task: 'lead_discovery', found: result.opportunities.length },
+      });
+      return result;
+    } catch (error) {
+      await logActivity('ai.failed', {
+        businessId,
+        metadata: { task: 'lead_discovery', message: error instanceof Error ? error.message : 'unknown' },
+      });
+      throw error;
+    }
   }
   seoSuggestion(
     businessId: string,

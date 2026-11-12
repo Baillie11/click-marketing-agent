@@ -2583,6 +2583,8 @@ function Calendar({ ctx }: { ctx: Ctx }) {
 }
 function LeadOpportunities({ ctx }: { ctx: Ctx }) {
   const [leads, setLeads] = useState<any[]>([]);
+  const [discovery, setDiscovery] = useState<any>(null);
+  const [configuringDiscovery, setConfiguringDiscovery] = useState(false);
   const [selected, setSelected] = useState<any>(null);
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2611,9 +2613,14 @@ function LeadOpportunities({ ctx }: { ctx: Ctx }) {
       setIdentity(fresh.reply?.currentRevision?.postingIdentity ?? ctx.user.name);
     }
   };
+  const loadDiscovery = async () => {
+    if (!ctx.selected) return;
+    setDiscovery(await api<any>(`/api/businesses/${ctx.selected.id}/lead-discovery`));
+  };
   useEffect(() => {
     setSelected(null);
     void load();
+    void loadDiscovery();
   }, [ctx.selected]);
   const openLead = async (id: string) => {
     const detail = await api<any>(`/api/leads/${id}`);
@@ -2675,6 +2682,38 @@ function LeadOpportunities({ ctx }: { ctx: Ctx }) {
     lead.reply?.publication
       ? 'Published manually'
       : (lead.reply?.contentItem?.status?.replaceAll('_', ' ') ?? lead.status);
+  const updateDiscoveryList = (field: string, value: string) =>
+    setDiscovery({
+      ...discovery,
+      profile: {
+        ...discovery.profile,
+        [field]: value
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+      },
+    });
+  const saveDiscovery = () =>
+    act(async () => {
+      await api(`/api/businesses/${ctx.selected!.id}/lead-discovery`, {
+        method: 'PUT',
+        body: JSON.stringify(discovery.profile),
+      });
+      setConfiguringDiscovery(false);
+      await loadDiscovery();
+    });
+  const runDiscovery = () =>
+    act(async () => {
+      const result = await api<any>(`/api/businesses/${ctx.selected!.id}/lead-discovery/run`, {
+        method: 'POST',
+      });
+      await loadDiscovery();
+      alert(
+        result.createdCount
+          ? `${result.createdCount} new lead ${result.createdCount === 1 ? 'opportunity was' : 'opportunities were'} added for review.`
+          : 'The scan completed, but no new sufficiently evidenced opportunities were found.',
+      );
+    });
   return (
     <Page
       title="Lead Opportunities"
@@ -2682,6 +2721,36 @@ function LeadOpportunities({ ctx }: { ctx: Ctx }) {
       action="Add opportunity"
       onAction={() => setAdding(true)}
     >
+      <section className="lead-discovery-card">
+        <div>
+          <span className="eyebrow">AI-ASSISTED PUBLIC WEB DISCOVERY</span>
+          <h2>{discovery?.configured ? 'Lead discovery is configured' : 'Set up lead discovery'}</h2>
+          <p>
+            Search public, accessible pages for genuine requests that match this business. Every
+            result retains its source link and still requires human review before any reply.
+          </p>
+          {discovery?.configured && (
+            <small>
+              {discovery.profile.frequency === 'MANUAL'
+                ? 'Runs manually'
+                : `${discovery.profile.frequency.toLowerCase()} monitoring`}
+              {discovery.profile.lastRunAt
+                ? ` · Last scan ${new Date(discovery.profile.lastRunAt).toLocaleString()}`
+                : ' · Not scanned yet'}
+            </small>
+          )}
+        </div>
+        <div className="lead-actions">
+          <button onClick={() => setConfiguringDiscovery(true)} disabled={!discovery || busy}>
+            {discovery?.configured ? 'Edit discovery' : 'Configure discovery'}
+          </button>
+          {discovery?.configured && (
+            <button className="complete-button" onClick={runDiscovery} disabled={busy}>
+              <Sparkles size={17} /> {busy ? 'Searching…' : 'Find opportunities now'}
+            </button>
+          )}
+        </div>
+      </section>
       <section className="lead-safety-note">
         <ShieldCheck />
         <div>
@@ -3060,6 +3129,144 @@ function LeadOpportunities({ ctx }: { ctx: Ctx }) {
                 onClick={capture}
               >
                 Capture opportunity
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+      {configuringDiscovery && discovery && (
+        <div className="modal-backdrop" onMouseDown={() => setConfiguringDiscovery(false)}>
+          <aside
+            className="review-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lead-discovery-title"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="review-header">
+              <div>
+                <span className="eyebrow">LEAD DISCOVERY</span>
+                <h2 id="lead-discovery-title">Search profile for {ctx.selected?.name}</h2>
+              </div>
+              <button className="icon-button" onClick={() => setConfiguringDiscovery(false)}>
+                <X />
+              </button>
+            </div>
+            <div className="review-body discovery-form">
+              <p className="field-help">
+                Use specific services, problems and buyer phrases. Broad terms produce weaker
+                results. Only public pages that can be cited are eligible.
+              </p>
+              <fieldset>
+                <legend>Platforms to search</legend>
+                <div className="platform-options">
+                  {['REDDIT', 'FACEBOOK', 'LINKEDIN', 'THREADS', 'INSTAGRAM', 'AIRTASKER', 'FORUM', 'OTHER'].map(
+                    (platform) => (
+                      <label key={platform}>
+                        <input
+                          type="checkbox"
+                          checked={discovery.profile.platforms.includes(platform)}
+                          onChange={(event) =>
+                            setDiscovery({
+                              ...discovery,
+                              profile: {
+                                ...discovery.profile,
+                                platforms: event.target.checked
+                                  ? [...discovery.profile.platforms, platform]
+                                  : discovery.profile.platforms.filter((item: string) => item !== platform),
+                              },
+                            })
+                          }
+                        />
+                        {platform.replaceAll('_', ' ')}
+                      </label>
+                    ),
+                  )}
+                </div>
+              </fieldset>
+              <label className="editor-field">
+                Services and topics
+                <textarea
+                  rows={3}
+                  value={discovery.profile.searchTerms.join(', ')}
+                  onChange={(event) => updateDiscoveryList('searchTerms', event.target.value)}
+                  placeholder="resume builder, cover letter help"
+                />
+                <small>Separate phrases with commas.</small>
+              </label>
+              <label className="editor-field">
+                Buyer-intent phrases
+                <textarea
+                  rows={3}
+                  value={discovery.profile.intentPhrases.join(', ')}
+                  onChange={(event) => updateDiscoveryList('intentPhrases', event.target.value)}
+                  placeholder="looking for, can anyone recommend, need help with"
+                />
+              </label>
+              <label className="editor-field">
+                Locations
+                <input
+                  value={discovery.profile.locations.join(', ')}
+                  onChange={(event) => updateDiscoveryList('locations', event.target.value)}
+                  placeholder="Australia, Gold Coast"
+                />
+              </label>
+              <label className="editor-field">
+                Exclude results containing
+                <input
+                  value={discovery.profile.excludedTerms.join(', ')}
+                  onChange={(event) => updateDiscoveryList('excludedTerms', event.target.value)}
+                  placeholder="job vacancy, for sale, competitor name"
+                />
+              </label>
+              <div className="field-grid">
+                <label className="editor-field">
+                  Monitoring frequency
+                  <select
+                    value={discovery.profile.frequency}
+                    onChange={(event) =>
+                      setDiscovery({
+                        ...discovery,
+                        profile: { ...discovery.profile, frequency: event.target.value },
+                      })
+                    }
+                  >
+                    <option value="MANUAL">Manual only</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                  </select>
+                </label>
+                <label className="editor-field">
+                  Maximum results per scan
+                  <input
+                    type="number"
+                    min={1}
+                    max={25}
+                    value={discovery.profile.maxResults}
+                    onChange={(event) =>
+                      setDiscovery({
+                        ...discovery,
+                        profile: { ...discovery.profile, maxResults: Number(event.target.value) },
+                      })
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="review-actions">
+              <button className="dismiss-button" onClick={() => setConfiguringDiscovery(false)}>
+                Cancel
+              </button>
+              <button
+                className="complete-button"
+                disabled={
+                  busy ||
+                  discovery.profile.platforms.length === 0 ||
+                  discovery.profile.searchTerms.length === 0
+                }
+                onClick={saveDiscovery}
+              >
+                <Check size={17} /> Save discovery profile
               </button>
             </div>
           </aside>

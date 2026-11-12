@@ -107,6 +107,17 @@ export const outreachPolicySchema = z.object({
   excludedTopics: z.array(z.string().min(1).max(200)).max(50).default([]),
   maxReplyLength: z.number().int().min(100).max(5000).default(1200),
 });
+export const leadDiscoveryFrequencies = ['MANUAL', 'DAILY', 'WEEKLY'] as const;
+export const leadDiscoveryProfileSchema = z.object({
+  enabled: z.boolean().default(true),
+  platforms: z.array(z.enum(leadPlatforms)).min(1).max(8),
+  searchTerms: z.array(z.string().trim().min(2).max(100)).min(1).max(30),
+  intentPhrases: z.array(z.string().trim().min(2).max(150)).max(30).default([]),
+  excludedTerms: z.array(z.string().trim().min(2).max(100)).max(30).default([]),
+  locations: z.array(z.string().trim().min(2).max(100)).max(20).default([]),
+  frequency: z.enum(leadDiscoveryFrequencies).default('MANUAL'),
+  maxResults: z.number().int().min(1).max(25).default(10),
+});
 
 export type BusinessInput = z.infer<typeof businessSchema>;
 export type ContentInput = z.infer<typeof contentSchema>;

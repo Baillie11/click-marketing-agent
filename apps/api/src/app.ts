@@ -31,6 +31,7 @@ import {
   leadDecisionSchema,
   manualPublicationSchema,
   outreachPolicySchema,
+  leadDiscoveryProfileSchema,
   productVersion,
 } from '@click/shared';
 import { db } from './db.js';
@@ -1638,6 +1639,195 @@ export const buildApp = async (config: Config) => {
       };
     },
   );
+
+  const nextDiscoveryRun = (frequency: string, from = new Date()) => {
+    if (frequency === 'DAILY') return new Date(from.getTime() + 24 * 60 * 60 * 1000);
+    if (frequency === 'WEEKLY') return new Date(from.getTime() + 7 * 24 * 60 * 60 * 1000);
+    return null;
+  };
+
+  const runLeadDiscovery = async (businessId: string, capturedById: string) => {
+    if (!ai) throw Object.assign(new Error('AI generation is not configured'), { statusCode: 503 });
+    const profile = await db.leadDiscoveryProfile.findUnique({ where: { businessId } });
+    if (!profile || !profile.enabled)
+      throw Object.assign(new Error('Configure and enable lead discovery first'), { statusCode: 400 });
+    const activeRun = await db.leadDiscoveryRun.findFirst({
+      where: {
+        businessId,
+        status: 'RUNNING',
+        startedAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+      },
+    });
+    if (activeRun)
+      throw Object.assign(new Error('A lead discovery scan is already running'), { statusCode: 409 });
+    const run = await db.leadDiscoveryRun.create({ data: { businessId } });
+    try {
+      const result = await ai.leadDiscovery(businessId, {
+        platforms: profile.platforms as string[],
+        searchTerms: profile.searchTerms as string[],
+        intentPhrases: profile.intentPhrases as string[],
+        excludedTerms: profile.excludedTerms as string[],
+        locations: profile.locations as string[],
+        maxResults: profile.maxResults,
+      });
+      let createdCount = 0;
+      for (const opportunity of result.opportunities) {
+        const identity = leadSourceIdentity(opportunity.platform, opportunity.url);
+        const existing = await db.leadOpportunity.findUnique({
+          where: { businessId_sourceKeyHash: { businessId, sourceKeyHash: identity.sourceKeyHash } },
+        });
+        if (existing) continue;
+        await db.leadOpportunity.create({
+          data: {
+            businessId,
+            platform: opportunity.platform,
+            originalUrl: opportunity.url,
+            ...identity,
+            postText: opportunity.sourceExcerpt,
+            sourceTextHash: sha256(opportunity.sourceExcerpt),
+            communityName: opportunity.communityName,
+            authorDisplayName: opportunity.authorDisplayName,
+            postedAt: opportunity.postedAt ? new Date(opportunity.postedAt) : null,
+            capturedById,
+            captureMethod: 'AI_DISCOVERY',
+            relevance: opportunity.relevanceScore >= 70 ? 'RELEVANT' : 'UNCERTAIN',
+            relevanceReason: opportunity.relevanceReason,
+            relevanceScore: opportunity.relevanceScore,
+          },
+        });
+        createdCount += 1;
+      }
+      const completedAt = new Date();
+      await db.$transaction([
+        db.leadDiscoveryRun.update({
+          where: { id: run.id },
+          data: {
+            status: 'COMPLETED',
+            discoveredCount: result.opportunities.length,
+            createdCount,
+            completedAt,
+          },
+        }),
+        db.leadDiscoveryProfile.update({
+          where: { businessId },
+          data: { lastRunAt: completedAt, nextRunAt: nextDiscoveryRun(profile.frequency, completedAt) },
+        }),
+      ]);
+      await logActivity('lead.discovery_completed', {
+        businessId,
+        userId: capturedById,
+        entityType: 'LeadDiscoveryRun',
+        entityId: run.id,
+        metadata: { discovered: result.opportunities.length, created: createdCount },
+      });
+      return { runId: run.id, discoveredCount: result.opportunities.length, createdCount };
+    } catch (error) {
+      await db.leadDiscoveryRun.update({
+        where: { id: run.id },
+        data: {
+          status: 'FAILED',
+          errorMessage: error instanceof Error ? error.message.slice(0, 2000) : 'Unknown error',
+          completedAt: new Date(),
+        },
+      });
+      throw error;
+    }
+  };
+
+  app.get(
+    '/api/businesses/:id/lead-discovery',
+    { preHandler: requireAuth },
+    async (request: any, reply) => {
+      if (!(await owns(request.user.sub, request.params.id)))
+        return reply.code(404).send({ error: 'Business not found' });
+      const business = await db.business.findUniqueOrThrow({ where: { id: request.params.id } });
+      const profile = await db.leadDiscoveryProfile.findUnique({ where: { businessId: business.id } });
+      const runs = await db.leadDiscoveryRun.findMany({
+        where: { businessId: business.id },
+        orderBy: { startedAt: 'desc' },
+        take: 5,
+      });
+      return {
+        profile: profile ?? {
+          enabled: true,
+          platforms: ['REDDIT', 'FACEBOOK', 'LINKEDIN', 'FORUM'],
+          searchTerms: [business.industry || business.name],
+          intentPhrases: ['recommendations', 'looking for', 'need help', 'best option'],
+          excludedTerms: ['job vacancy', 'for sale'],
+          locations: business.location ? [business.location] : [],
+          frequency: 'MANUAL',
+          maxResults: 10,
+          lastRunAt: null,
+          nextRunAt: null,
+        },
+        configured: Boolean(profile),
+        runs,
+      };
+    },
+  );
+
+  app.put(
+    '/api/businesses/:id/lead-discovery',
+    { preHandler: requireAuth },
+    async (request: any, reply) => {
+      if (!(await canManage(request.user.sub, request.params.id)))
+        return reply.code(403).send({ error: 'Owner or manager access is required' });
+      const input = leadDiscoveryProfileSchema.parse(request.body);
+      const now = new Date();
+      const profile = await db.leadDiscoveryProfile.upsert({
+        where: { businessId: request.params.id },
+        create: {
+          businessId: request.params.id,
+          updatedById: request.user.sub,
+          ...input,
+          nextRunAt: input.enabled ? nextDiscoveryRun(input.frequency, now) : null,
+        },
+        update: {
+          updatedById: request.user.sub,
+          ...input,
+          nextRunAt: input.enabled ? nextDiscoveryRun(input.frequency, now) : null,
+        },
+      });
+      await logActivity('lead.discovery_profile_saved', {
+        businessId: request.params.id,
+        userId: request.user.sub,
+        entityType: 'LeadDiscoveryProfile',
+        entityId: profile.id,
+      });
+      return profile;
+    },
+  );
+
+  app.post(
+    '/api/businesses/:id/lead-discovery/run',
+    { preHandler: requireAuth, config: { rateLimit: { max: 3, timeWindow: '1 hour' } } },
+    async (request: any, reply) => {
+      if (!(await canEdit(request.user.sub, request.params.id)))
+        return reply.code(403).send({ error: 'Editor access is required' });
+      return reply.send(await runLeadDiscovery(request.params.id, request.user.sub));
+    },
+  );
+
+  app.post('/api/internal/lead-discovery/run-due', async (request: any, reply) => {
+    if (!config.LEAD_DISCOVERY_CRON_SECRET) return reply.code(404).send({ error: 'Not found' });
+    const supplied = String(request.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+    if (!supplied || sha256(supplied) !== sha256(config.LEAD_DISCOVERY_CRON_SECRET))
+      return reply.code(401).send({ error: 'Authentication required' });
+    const profiles = await db.leadDiscoveryProfile.findMany({
+      where: { enabled: true, frequency: { in: ['DAILY', 'WEEKLY'] }, nextRunAt: { lte: new Date() } },
+      orderBy: { nextRunAt: 'asc' },
+      take: 3,
+    });
+    const results = [];
+    for (const profile of profiles) {
+      try {
+        results.push({ businessId: profile.businessId, ...(await runLeadDiscovery(profile.businessId, profile.updatedById)) });
+      } catch (error) {
+        results.push({ businessId: profile.businessId, error: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+    return { processed: profiles.length, results };
+  });
 
   const leadDetail = (id: string) =>
     db.leadOpportunity.findUnique({
