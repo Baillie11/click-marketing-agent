@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 
-const BCRYPT_ROUNDS = 12;
+// Ten rounds keeps account creation responsive on constrained shared-hosting
+// Passenger workers while retaining bcrypt's adaptive password protection.
+const BCRYPT_ROUNDS = 10;
 
 export const hashPassword = (password: string) => bcrypt.hash(password, BCRYPT_ROUNDS);
 
