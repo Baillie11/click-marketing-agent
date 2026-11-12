@@ -185,8 +185,25 @@ model Business {
   leadReplies       LeadReply[]
   leadPublications  LeadReplyPublication[]
   outreachPolicy    BusinessOutreachPolicy?
+  contacts          Contact[]
 
   @@map("businesses")
+}
+
+model Contact {
+  id            String   @id @default(uuid()) @db.Char(36)
+  businessId    String   @map("business_id") @db.Char(36)
+  email         String   @db.VarChar(255)
+  businessName  String   @map("business_name") @db.VarChar(150)
+  contactName   String   @map("contact_name") @db.VarChar(150)
+  contactNumber String   @map("contact_number") @db.VarChar(50)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, businessName])
+  @@index([businessId, contactName])
+  @@map("contacts")
 }
 
 model BusinessMember {
