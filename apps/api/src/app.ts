@@ -4,13 +4,13 @@ import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
-import argon2 from 'argon2';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { access, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { hashPassword, verifyPassword } from './services/password.js';
 import {
   businessSchema,
   contentSchema,
@@ -225,7 +225,7 @@ export const buildApp = async (config: Config) => {
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
     async (request, reply) => {
       const input = registerSchema.parse(request.body);
-      const passwordHash = await argon2.hash(input.password, { type: argon2.argon2id });
+      const passwordHash = await hashPassword(input.password);
       try {
         const user = await db.user.create({
           data: { name: input.name, email: input.email, passwordHash },
@@ -252,7 +252,7 @@ export const buildApp = async (config: Config) => {
     async (request, reply) => {
       const input = loginSchema.parse(request.body);
       const user = await db.user.findUnique({ where: { email: input.email.toLowerCase() } });
-      if (!user || !(await argon2.verify(user.passwordHash, input.password)))
+      if (!user || !(await verifyPassword(user.passwordHash, input.password)))
         return reply.code(401).send({ error: 'Invalid email or password' });
       const token = await reply.jwtSign({ sub: user.id, ver: user.authVersion });
       reply.setCookie('click_session', token, {
@@ -318,7 +318,7 @@ export const buildApp = async (config: Config) => {
           .code(400)
           .send({ error: 'This password reset link is invalid or has expired' });
       }
-      const passwordHash = await argon2.hash(input.newPassword, { type: argon2.argon2id });
+      const passwordHash = await hashPassword(input.newPassword);
       try {
         await db.$transaction(async (tx) => {
           const claimed = await tx.passwordResetToken.updateMany({
@@ -360,7 +360,7 @@ export const buildApp = async (config: Config) => {
     async (request: any, reply) => {
       const input = accountProfileSchema.parse(request.body);
       const user = await db.user.findUnique({ where: { id: request.user.sub } });
-      if (!user || !(await argon2.verify(user.passwordHash, input.currentPassword))) {
+      if (!user || !(await verifyPassword(user.passwordHash, input.currentPassword))) {
         return reply.code(401).send({ error: 'Your current password is incorrect' });
       }
       try {
@@ -387,10 +387,10 @@ export const buildApp = async (config: Config) => {
     async (request: any, reply) => {
       const input = accountPasswordSchema.parse(request.body);
       const user = await db.user.findUnique({ where: { id: request.user.sub } });
-      if (!user || !(await argon2.verify(user.passwordHash, input.currentPassword))) {
+      if (!user || !(await verifyPassword(user.passwordHash, input.currentPassword))) {
         return reply.code(401).send({ error: 'Your current password is incorrect' });
       }
-      const passwordHash = await argon2.hash(input.newPassword, { type: argon2.argon2id });
+      const passwordHash = await hashPassword(input.newPassword);
       const updated = await db.user.update({
         where: { id: user.id },
         data: { passwordHash, authVersion: { increment: 1 } },
@@ -482,7 +482,7 @@ export const buildApp = async (config: Config) => {
       }
 
       const temporarySecret = createPasswordResetToken().token;
-      const passwordHash = await argon2.hash(temporarySecret, { type: argon2.argon2id });
+      const passwordHash = await hashPassword(temporarySecret);
       const reset = createPasswordResetToken();
       const expiresAt = passwordResetExpiry(config.PASSWORD_RESET_EXPIRES_MINUTES);
       const user = await db.$transaction(async (tx) => {

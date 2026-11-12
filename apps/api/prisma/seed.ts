@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import argon2 from 'argon2';
+import { hashPassword } from '../src/services/password.js';
 const db = new PrismaClient();
 const businesses = [
   {
@@ -54,7 +54,7 @@ async function main() {
     create: {
       email,
       name: 'Demo Owner',
-      passwordHash: await argon2.hash('ChangeMe123!', { type: argon2.argon2id }),
+      passwordHash: await hashPassword('ChangeMe123!'),
     },
   });
   for (const item of businesses) {
