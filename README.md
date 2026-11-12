@@ -53,6 +53,12 @@ The development seed creates a local-only demonstration account. Never run `db:s
 
 For deployment prerequisites, email configuration, migrations, health checks and operational checks, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+## QR Code Generator contacts
+
+The QR generator can import submitted contact forms through `POST /api/integrations/qr-code-generator/contacts`, authenticated with a business-scoped bearer integration token. Imports store the contact name, business name, email and website; match normalized emails; fill missing fields; and respect suppressed contacts. Imports do not send messages or start campaigns.
+
+Apply database migrations and restart the API before connecting the generator. Run `node scripts/connect-qr-generator.mjs BUSINESS_UUID ABSOLUTE_PRIVATE_DIRECTORY [API_URL]` to create a token and save its configuration directly in the generator's private contact-storage directory. The token is not printed. Use HTTPS for remote API URLs. The QR generator's README documents the retry scheduler and deployment configuration.
+
 ## Lead Opportunities
 
 The Lead Opportunities workspace provides a controlled outreach workflow:

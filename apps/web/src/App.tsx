@@ -2359,7 +2359,7 @@ function ContentEditor({ item, onClose, onSaved }: any) {
   );
 }
 function Contacts({ ctx }: { ctx: Ctx }) {
-  const blank = { email: '', businessName: '', contactName: '', contactNumber: '' };
+  const blank = { email: '', businessName: '', contactName: '', contactNumber: '', website: '' };
   const [contacts, setContacts] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<any>(null);
@@ -2389,6 +2389,7 @@ function Contacts({ ctx }: { ctx: Ctx }) {
             businessName: contact.businessName,
             contactName: contact.contactName,
             contactNumber: contact.contactNumber,
+            website: contact.website ?? '',
           }
         : blank,
     );
@@ -2445,7 +2446,7 @@ function Contacts({ ctx }: { ctx: Ctx }) {
         {contacts.map((contact) => (
           <div className="crm-row" key={contact.id}>
             <strong>{contact.contactName}</strong>
-            <span>{contact.businessName}</span>
+            <span>{contact.businessName}{contact.website && <><br /><a href={contact.website} target="_blank" rel="noopener noreferrer">{contact.website}</a></>}</span>
             <a href={`mailto:${contact.email}`}>{contact.email}</a>
             <a href={`tel:${contact.contactNumber}`}>{contact.contactNumber}</a>
             <span className="crm-actions">
@@ -2524,9 +2525,17 @@ function Contacts({ ctx }: { ctx: Ctx }) {
                 />
               </label>
               <label className="editor-field">
-                Contact number
+                Website URL
                 <input
-                  required
+                  type="url"
+                  maxLength={2048}
+                  value={form.website}
+                  onChange={(e) => setForm({ ...form, website: e.target.value })}
+                />
+              </label>
+              <label className="editor-field">
+                Contact number (optional)
+                <input
                   type="tel"
                   maxLength={50}
                   value={form.contactNumber}

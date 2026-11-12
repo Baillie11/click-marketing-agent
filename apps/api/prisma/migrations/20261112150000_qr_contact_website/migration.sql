@@ -1,0 +1,1 @@
+ALTER TABLE `contacts` ADD COLUMN `website` VARCHAR(2048) NULL;

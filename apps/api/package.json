@@ -10,7 +10,7 @@
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
-    "db:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "db:deploy": "node --env-file=../../.env node_modules/prisma/build/index.js migrate deploy",
     "db:seed": "dotenv -e ../../.env -- prisma db seed"
   },
   "dependencies": {

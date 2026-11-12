@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { registerQrContactImport } from './services/qr-contact-import.js';
 import cors from '@fastify/cors';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
@@ -221,6 +222,7 @@ export const buildApp = async (config: Config) => {
       return reply.send({ id: contact.id });
     },
   );
+  registerQrContactImport(app);
   app.post(
     '/api/auth/register',
     { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } },
@@ -586,7 +588,8 @@ export const buildApp = async (config: Config) => {
     email: z.string().trim().email().max(255),
     businessName: z.string().trim().min(1).max(150),
     contactName: z.string().trim().min(1).max(150),
-    contactNumber: z.string().trim().min(1).max(50),
+    contactNumber: z.string().trim().max(50),
+    website: z.union([z.literal(''), z.string().trim().url().max(2048).refine(value => /^https?:\/\//i.test(value))]).optional(),
   });
   app.get(
     '/api/businesses/:id/contacts',
@@ -627,6 +630,7 @@ export const buildApp = async (config: Config) => {
         data: {
           businessId: request.params.id,
           ...input,
+          website: input.website ?? null,
           normalizedEmail: input.email.toLowerCase(),
         },
       });
@@ -646,7 +650,7 @@ export const buildApp = async (config: Config) => {
       const input = contactSchema.parse(request.body);
       return db.contact.update({
         where: { id: existing.id },
-        data: { ...input, normalizedEmail: input.email.toLowerCase() },
+        data: { ...input, website: input.website ?? existing.website, normalizedEmail: input.email.toLowerCase() },
       });
     },
   );

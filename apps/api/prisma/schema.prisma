@@ -202,6 +202,7 @@ model Contact {
   businessName  String   @map("business_name") @db.VarChar(150)
   contactName   String   @map("contact_name") @db.VarChar(150)
   contactNumber String   @map("contact_number") @db.VarChar(50)
+  website       String?  @db.VarChar(2048)
   source        String?  @db.VarChar(50)
   sourceId      String?  @map("source_id") @db.VarChar(255)
   suppressedAt  DateTime? @map("suppressed_at")
