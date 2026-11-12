@@ -3,6 +3,7 @@ dist/
 .env
 coverage/
 *.log
+*.mp4
 *.tsbuildinfo
 .DS_Store
 work/

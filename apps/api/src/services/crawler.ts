@@ -3,9 +3,14 @@ import { db } from '../db.js';
 import { assertSafePublicUrl, normaliseUrl, sameDomain } from '../lib/url.js';
 import { detectPageIssues, healthScore } from './seo.js';
 import { logActivity } from './activity.js';
+import { getPublisher } from './publishers.js';
+import { WordPressPublisher } from './wordpress-connector.js';
 
 export class CrawlerService {
-  constructor(private readonly timeoutMs = 10000) {}
+  constructor(
+    private readonly timeoutMs = 10000,
+    private readonly encryptionKey?: string,
+  ) {}
 
   async crawl(businessId: string, requestedMax = 50) {
     const business = await db.business.findUniqueOrThrow({
@@ -25,6 +30,19 @@ export class CrawlerService {
       Object.assign(error, { statusCode: 409 });
       throw error;
     }
+
+    // Pre-scan cache purge if WordPress is connected
+    if (website.connectionStatus === 'CONNECTED' && website.connectionTarget === 'LIVE' && this.encryptionKey) {
+      try {
+        const publisher = await getPublisher(website.id, this.encryptionKey);
+        if (publisher instanceof WordPressPublisher) {
+          await publisher.purgeCache();
+        }
+      } catch {
+        // Continue crawl even if purge fails
+      }
+    }
+
     const crawl = await db.websiteCrawl.create({
       data: { websiteId: website.id, status: 'RUNNING', startedAt: new Date() },
     });
@@ -38,35 +56,66 @@ export class CrawlerService {
     const maxPages = Math.min(requestedMax, 100);
     try {
       while (queue.length && seen.size < maxPages) {
-        const url = queue.shift()!;
+        const rawUrl = queue.shift()!;
+        const url = normaliseUrl(rawUrl);
         if (seen.has(url)) continue;
         seen.add(url);
-        await assertSafePublicUrl(url); // DNS rebinding protection on every request.
-        const response = await fetch(url, {
-          redirect: 'manual',
-          signal: AbortSignal.timeout(this.timeoutMs),
-          headers: {
-            'user-agent': 'ClickMarketingAgentBot/0.1 (+site audit requested by account owner)',
-            accept: 'text/html,application/xhtml+xml',
-          },
-        });
-        if (response.status >= 300 && response.status < 400) {
-          const location = response.headers.get('location');
-          if (location) {
-            const target = normaliseUrl(location, url);
-            if (sameDomain(target, business.websiteUrl)) queue.push(target);
+
+        // Follow redirects hop-by-hop so every request is DNS-checked, fetching
+        // exactly the URL the server returns. CMSs like WordPress 301-redirect
+        // normalised URLs back to a canonical form (e.g. trailing slash), so the
+        // redirect target must be fetched as-is rather than re-normalised.
+        let response: Response | null = null;
+        let pageUrl = url;
+        try {
+          let fetchTarget: string | null = url;
+          for (let hop = 0; hop < 5 && fetchTarget; hop++) {
+            await assertSafePublicUrl(fetchTarget); // DNS rebinding protection on every request.
+            const res: Response = await fetch(fetchTarget, {
+              redirect: 'manual',
+              signal: AbortSignal.timeout(this.timeoutMs),
+              headers: {
+                'user-agent':
+                  'ClickMarketingAgentBot/0.1 (+site audit requested by account owner)',
+                'cache-control': 'no-cache, no-store, must-revalidate, max-age=0',
+                'pragma': 'no-cache',
+                accept: 'text/html,application/xhtml+xml',
+              },
+            });
+            if (res.status < 300 || res.status >= 400) {
+              response = res;
+              pageUrl = normaliseUrl(fetchTarget);
+              break;
+            }
+            const location = res.headers.get('location');
+            if (!location) break;
+            const absolute = new URL(location, fetchTarget).toString();
+            const target = normaliseUrl(absolute);
+            if (
+              !sameDomain(absolute, business.websiteUrl) ||
+              (target !== normaliseUrl(fetchTarget) && seen.has(target))
+            )
+              break;
+            fetchTarget = absolute;
+            pageUrl = target;
           }
+        } catch {
+          continue; // Skip unreachable pages without failing the whole audit.
         }
+        if (!response) continue;
+        if (pageUrl !== url && seen.has(pageUrl)) continue; // Redirect target already crawled.
+        seen.add(pageUrl);
+
         const contentType = response.headers.get('content-type') ?? '';
-        const html = contentType.includes('text/html')
-          ? (await response.text()).slice(0, 5_000_000)
-          : '';
+        if (!contentType.includes('text/html')) continue;
+
+        const html = (await response.text()).slice(0, 5_000_000);
         const $ = cheerio.load(html);
         $('script,style,noscript,template').remove();
         const text = $('body').text().replace(/\s+/g, ' ').trim();
         const links = $('a[href]')
           .map((_, el) => ({
-            targetUrl: normaliseUrl($(el).attr('href')!, url),
+            targetUrl: normaliseUrl($(el).attr('href')!, pageUrl),
             anchorText: $(el).text().trim().slice(0, 1000),
           }))
           .get()
@@ -84,12 +133,12 @@ export class CrawlerService {
           data: {
             websiteId: website.id,
             crawlId: crawl.id,
-            url,
+            url: pageUrl,
             statusCode: response.status,
-            title: $('title').first().text().trim() || null,
+            title: $('title').first().text().trim().slice(0, 512) || null,
             metaDescription: $('meta[name="description"]').attr('content')?.trim() || null,
             canonicalUrl: $('link[rel="canonical"]').attr('href')
-              ? normaliseUrl($('link[rel="canonical"]').attr('href')!, url)
+              ? normaliseUrl($('link[rel="canonical"]').attr('href')!, pageUrl).slice(0, 2048)
               : null,
             h1: $('h1')
               .map((_, el) => $(el).text().trim())
@@ -117,7 +166,9 @@ export class CrawlerService {
             })),
           });
       }
-      const pages = await db.websitePage.findMany({ where: { crawlId: crawl.id } });
+      const pages = await db.websitePage.findMany({
+        where: { crawlId: crawl.id, statusCode: { gte: 200, lt: 300 } },
+      });
       const detected = pages.flatMap(detectPageIssues);
       if (detected.length)
         await db.seoIssue.createMany({

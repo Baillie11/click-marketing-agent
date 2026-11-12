@@ -56,6 +56,36 @@ enum ContentType {
   CAMPAIGN_IDEA
   EMAIL_NEWSLETTER
   SOCIAL_POST
+  LEAD_REPLY
+}
+
+enum LeadStatus {
+  NEW
+  QUALIFIED
+  DISMISSED
+  CLOSED
+}
+
+enum LeadRelevance {
+  RELEVANT
+  UNCERTAIN
+  NOT_RELEVANT
+}
+
+enum LeadDecision {
+  APPROVED
+  REJECTED
+}
+
+enum PublicationVerification {
+  USER_ATTESTED
+  PLATFORM_CONFIRMED
+}
+
+enum ApprovalCompliance {
+  COMPLIANT
+  DEVIATED
+  UNAPPROVED
 }
 
 enum AutomationMode {
@@ -77,6 +107,11 @@ enum ConnectionStatus {
   ERROR
 }
 
+enum ConnectionTarget {
+  LIVE
+  STAGING
+}
+
 enum ChangeStatus {
   PROPOSED
   APPROVED
@@ -88,44 +123,68 @@ enum ChangeStatus {
 }
 
 model User {
-  id           String           @id @default(uuid()) @db.Char(36)
-  email        String           @unique @db.VarChar(255)
-  name         String           @db.VarChar(100)
-  passwordHash String           @map("password_hash") @db.VarChar(255)
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
-  businesses   BusinessMember[]
-  activities   ActivityLog[]
+  id                  String                   @id @default(uuid()) @db.Char(36)
+  email               String                   @unique @db.VarChar(255)
+  name                String                   @db.VarChar(100)
+  passwordHash        String                   @map("password_hash") @db.VarChar(255)
+  authVersion         Int                      @default(0) @map("auth_version")
+  createdAt           DateTime                 @default(now()) @map("created_at")
+  updatedAt           DateTime                 @updatedAt @map("updated_at")
+  businesses          BusinessMember[]
+  activities          ActivityLog[]
+  passwordResetTokens PasswordResetToken[]
+  capturedLeads       LeadOpportunity[]        @relation("lead_captured_by")
+  replyRevisions      LeadReplyRevision[]      @relation("reply_revision_created_by")
+  replyApprovals      LeadReplyApproval[]      @relation("reply_approval_actor")
+  replyPublications   LeadReplyPublication[]   @relation("reply_publication_recorded_by")
+  outreachPolicies    BusinessOutreachPolicy[] @relation("outreach_policy_updated_by")
 
   @@map("users")
 }
 
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
+  tokenHash String    @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("password_reset_tokens")
+}
+
 model Business {
-  id               String           @id @default(uuid()) @db.Char(36)
-  name             String           @db.VarChar(150)
-  slug             String           @unique @db.VarChar(170)
-  websiteUrl       String           @map("website_url") @db.VarChar(2048)
-  description      String           @db.Text
-  industry         String           @db.VarChar(150)
-  location         String           @db.VarChar(250)
-  targetAudience   String           @map("target_audience") @db.Text
-  productsServices String           @map("products_services") @db.Text
-  primaryGoal      String           @map("primary_goal") @db.Text
-  secondaryGoals   Json             @map("secondary_goals")
-  brandTone        String           @map("brand_tone") @db.Text
-  keywords         Json
-  mainCta          String           @map("main_cta") @db.VarChar(500)
-  archivedAt       DateTime?        @map("archived_at")
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
-  members          BusinessMember[]
-  brandVoice       BrandVoice?
-  website          Website?
-  content          ContentItem[]
-  recommendations  Recommendation[]
-  seoIssues        SeoIssue[]
-  activities       ActivityLog[]
-  marketingPlans   MarketingPlan[]
+  id                String                  @id @default(uuid()) @db.Char(36)
+  name              String                  @db.VarChar(150)
+  slug              String                  @unique @db.VarChar(170)
+  websiteUrl        String                  @map("website_url") @db.VarChar(2048)
+  description       String                  @db.Text
+  industry          String                  @db.VarChar(150)
+  location          String                  @db.VarChar(250)
+  targetAudience    String                  @map("target_audience") @db.Text
+  productsServices  String                  @map("products_services") @db.Text
+  primaryGoal       String                  @map("primary_goal") @db.Text
+  secondaryGoals    Json                    @map("secondary_goals")
+  brandTone         String                  @map("brand_tone") @db.Text
+  keywords          Json
+  mainCta           String                  @map("main_cta") @db.VarChar(500)
+  archivedAt        DateTime?               @map("archived_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  members           BusinessMember[]
+  brandVoice        BrandVoice?
+  website           Website?
+  content           ContentItem[]
+  recommendations   Recommendation[]
+  seoIssues         SeoIssue[]
+  activities        ActivityLog[]
+  marketingPlans    MarketingPlan[]
+  leadOpportunities LeadOpportunity[]
+  leadReplies       LeadReply[]
+  leadPublications  LeadReplyPublication[]
+  outreachPolicy    BusinessOutreachPolicy?
 
   @@map("businesses")
 }
@@ -159,42 +218,68 @@ model BrandVoice {
 }
 
 model Website {
-  id                 String             @id @default(uuid()) @db.Char(36)
-  businessId         String             @unique @map("business_id") @db.Char(36)
-  baseUrl            String             @map("base_url") @db.VarChar(2048)
-  lastCrawledAt      DateTime?          @map("last_crawled_at")
-  healthScore        Int?               @map("health_score")
-  automationMode     AutomationMode     @default(RECOMMEND_ONLY) @map("automation_mode")
-  automationRules    Json?              @map("automation_rules")
-  connectionProvider ConnectionProvider @default(NONE) @map("connection_provider")
-  connectionStatus   ConnectionStatus   @default(DISCONNECTED) @map("connection_status")
-  business           Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  crawls             WebsiteCrawl[]
-  pages              WebsitePage[]
-  changes            WebsiteChange[]
+  id                   String             @id @default(uuid()) @db.Char(36)
+  businessId           String             @unique @map("business_id") @db.Char(36)
+  baseUrl              String             @map("base_url") @db.VarChar(2048)
+  lastCrawledAt        DateTime?          @map("last_crawled_at")
+  healthScore          Int?               @map("health_score")
+  automationMode       AutomationMode     @default(RECOMMEND_ONLY) @map("automation_mode")
+  automationRules      Json?              @map("automation_rules")
+  connectionProvider   ConnectionProvider @default(NONE) @map("connection_provider")
+  connectionStatus     ConnectionStatus   @default(DISCONNECTED) @map("connection_status")
+  connectionUsername   String?            @map("connection_username") @db.VarChar(255)
+  connectionSecret     String?            @map("connection_secret") @db.Text
+  connectionVerifiedAt DateTime?          @map("connection_verified_at")
+  connectionError      String?            @map("connection_error") @db.Text
+  stagingBaseUrl       String?            @map("staging_base_url") @db.VarChar(2048)
+  connectionBaseUrl    String?            @map("connection_base_url") @db.VarChar(2048)
+  connectionTarget     ConnectionTarget   @default(LIVE) @map("connection_target")
+  business             Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  crawls               WebsiteCrawl[]
+  pages                WebsitePage[]
+  changes              WebsiteChange[]
+  visualAudits         VisualAudit[]
 
   @@map("websites")
 }
 
+model VisualAudit {
+  id           String      @id @default(uuid()) @db.Char(36)
+  websiteId    String      @map("website_id") @db.Char(36)
+  status       CrawlStatus @default(QUEUED)
+  pagesAudited Int         @default(0) @map("pages_audited")
+  result       Json?
+  error        String?     @db.Text
+  startedAt    DateTime?   @map("started_at")
+  completedAt  DateTime?   @map("completed_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  website      Website     @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId, createdAt])
+  @@map("visual_audits")
+}
+
 model WebsiteChange {
-  id               String       @id @default(uuid()) @db.Char(36)
-  websiteId        String       @map("website_id") @db.Char(36)
-  seoIssueId       String?      @map("seo_issue_id") @db.Char(36)
-  recommendationId String?      @map("recommendation_id") @db.Char(36)
-  targetUrl        String       @map("target_url") @db.VarChar(2048)
-  targetField      String       @map("target_field") @db.VarChar(100)
-  beforeValue      String?      @map("before_value") @db.LongText
-  proposedValue    String       @map("proposed_value") @db.LongText
-  appliedValue     String?      @map("applied_value") @db.LongText
-  status           ChangeStatus @default(PROPOSED)
-  approvedById     String?      @map("approved_by_id") @db.Char(36)
-  approvedAt       DateTime?    @map("approved_at")
-  appliedAt        DateTime?    @map("applied_at")
-  verifiedAt       DateTime?    @map("verified_at")
-  failureReason    String?      @map("failure_reason") @db.Text
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  website          Website      @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+  id                 String           @id @default(uuid()) @db.Char(36)
+  websiteId          String           @map("website_id") @db.Char(36)
+  seoIssueId         String?          @map("seo_issue_id") @db.Char(36)
+  recommendationId   String?          @map("recommendation_id") @db.Char(36)
+  targetUrl          String           @map("target_url") @db.VarChar(2048)
+  targetField        String           @map("target_field") @db.VarChar(100)
+  beforeValue        String?          @map("before_value") @db.LongText
+  proposedValue      String           @map("proposed_value") @db.LongText
+  appliedValue       String?          @map("applied_value") @db.LongText
+  status             ChangeStatus     @default(PROPOSED)
+  approvedById       String?          @map("approved_by_id") @db.Char(36)
+  approvedAt         DateTime?        @map("approved_at")
+  appliedAt          DateTime?        @map("applied_at")
+  verifiedAt         DateTime?        @map("verified_at")
+  failureReason      String?          @map("failure_reason") @db.Text
+  targetEnvironment  ConnectionTarget @default(LIVE) @map("target_environment")
+  executionTargetUrl String?          @map("execution_target_url") @db.VarChar(2048)
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+  website            Website          @relation(fields: [websiteId], references: [id], onDelete: Cascade)
 
   @@index([websiteId, status])
   @@map("website_changes")
@@ -291,6 +376,7 @@ model Recommendation {
   updatedAt     DateTime       @updatedAt @map("updated_at")
   business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
   page          WebsitePage?   @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  leadReply     LeadReply?
 
   @@map("recommendations")
 }
@@ -312,9 +398,169 @@ model ContentItem {
   updatedAt   DateTime      @updatedAt @map("updated_at")
   business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   page        WebsitePage?  @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  leadReply   LeadReply?
 
   @@index([businessId, status, type])
   @@map("content_items")
+}
+
+model LeadOpportunity {
+  id                String         @id @default(uuid()) @db.Char(36)
+  businessId        String         @map("business_id") @db.Char(36)
+  platform          String         @db.VarChar(50)
+  originalUrl       String         @map("original_url") @db.VarChar(2048)
+  canonicalUrl      String         @map("canonical_url") @db.VarChar(2048)
+  sourceKeyHash     String         @map("source_key_hash") @db.Char(64)
+  platformPostId    String?        @map("platform_post_id") @db.VarChar(255)
+  communityName     String?        @map("community_name") @db.VarChar(255)
+  postText          String         @map("post_text") @db.LongText
+  authorDisplayName String?        @map("author_display_name") @db.VarChar(255)
+  postedAt          DateTime?      @map("posted_at")
+  capturedAt        DateTime       @default(now()) @map("captured_at")
+  capturedById      String         @map("captured_by_id") @db.Char(36)
+  captureMethod     String         @default("MANUAL") @map("capture_method") @db.VarChar(30)
+  sourceVersion     Int            @default(1) @map("source_version")
+  sourceTextHash    String         @map("source_text_hash") @db.Char(64)
+  status            LeadStatus     @default(NEW)
+  relevance         LeadRelevance?
+  relevanceReason   String?        @map("relevance_reason") @db.Text
+  relevanceScore    Int?           @map("relevance_score")
+  dismissalReason   String?        @map("dismissal_reason") @db.Text
+  version           Int            @default(1)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  business          Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  capturedBy        User           @relation("lead_captured_by", fields: [capturedById], references: [id])
+  reply             LeadReply?
+
+  @@unique([businessId, sourceKeyHash])
+  @@index([businessId, status, capturedAt])
+  @@map("lead_opportunities")
+}
+
+model LeadReply {
+  id                String                @id @default(uuid()) @db.Char(36)
+  businessId        String                @map("business_id") @db.Char(36)
+  leadId            String                @unique @map("lead_id") @db.Char(36)
+  contentItemId     String                @unique @map("content_item_id") @db.Char(36)
+  recommendationId  String                @unique @map("recommendation_id") @db.Char(36)
+  currentRevisionId String?               @unique @map("current_revision_id") @db.Char(36)
+  activeApprovalId  String?               @unique @map("active_approval_id") @db.Char(36)
+  version           Int                   @default(1)
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+  business          Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lead              LeadOpportunity       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contentItem       ContentItem           @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  recommendation    Recommendation        @relation(fields: [recommendationId], references: [id], onDelete: Cascade)
+  currentRevision   LeadReplyRevision?    @relation("current_revision", fields: [currentRevisionId], references: [id], onDelete: SetNull)
+  activeApproval    LeadReplyApproval?    @relation("active_approval", fields: [activeApprovalId], references: [id], onDelete: SetNull)
+  revisions         LeadReplyRevision[]   @relation("reply_revisions")
+  approvals         LeadReplyApproval[]   @relation("reply_approvals")
+  publication       LeadReplyPublication?
+
+  @@index([businessId, createdAt])
+  @@map("lead_replies")
+}
+
+model LeadReplyRevision {
+  id                 String                 @id @default(uuid()) @db.Char(36)
+  replyId            String                 @map("reply_id") @db.Char(36)
+  revisionNumber     Int                    @map("revision_number")
+  body               String                 @db.LongText
+  bodyHash           String                 @map("body_hash") @db.Char(64)
+  sourceVersion      Int                    @map("source_version")
+  sourceTextHash     String                 @map("source_text_hash") @db.Char(64)
+  postingIdentity    String                 @map("posting_identity") @db.VarChar(255)
+  createdById        String                 @map("created_by_id") @db.Char(36)
+  aiGenerated        Boolean                @default(false) @map("ai_generated")
+  model              String?                @db.VarChar(100)
+  promptVersion      String                 @default("lead-reply-v1") @map("prompt_version") @db.VarChar(50)
+  policyVersion      Int                    @default(1) @map("policy_version")
+  generationMetadata Json?                  @map("generation_metadata")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  reply              LeadReply              @relation("reply_revisions", fields: [replyId], references: [id], onDelete: Cascade)
+  currentFor         LeadReply?             @relation("current_revision")
+  createdBy          User                   @relation("reply_revision_created_by", fields: [createdById], references: [id])
+  approvals          LeadReplyApproval[]
+  publications       LeadReplyPublication[]
+
+  @@unique([replyId, revisionNumber])
+  @@map("lead_reply_revisions")
+}
+
+model LeadReplyApproval {
+  id               String                @id @default(uuid()) @db.Char(36)
+  replyId          String                @map("reply_id") @db.Char(36)
+  revisionId       String                @map("revision_id") @db.Char(36)
+  decision         LeadDecision
+  actorUserId      String                @map("actor_user_id") @db.Char(36)
+  decidedAt        DateTime              @default(now()) @map("decided_at")
+  reason           String?               @db.Text
+  sourceTextHash   String                @map("source_text_hash") @db.Char(64)
+  postingIdentity  String                @map("posting_identity") @db.VarChar(255)
+  policyVersion    Int                   @map("policy_version")
+  revokedAt        DateTime?             @map("revoked_at")
+  revocationReason String?               @map("revocation_reason") @db.Text
+  reply            LeadReply             @relation("reply_approvals", fields: [replyId], references: [id], onDelete: Cascade)
+  activeFor        LeadReply?            @relation("active_approval")
+  revision         LeadReplyRevision     @relation(fields: [revisionId], references: [id])
+  actor            User                  @relation("reply_approval_actor", fields: [actorUserId], references: [id])
+  publication      LeadReplyPublication?
+
+  @@index([replyId, decidedAt])
+  @@map("lead_reply_approvals")
+}
+
+model LeadReplyPublication {
+  id                 String                  @id @default(uuid()) @db.Char(36)
+  businessId         String                  @map("business_id") @db.Char(36)
+  replyId            String                  @unique @map("reply_id") @db.Char(36)
+  revisionId         String                  @map("revision_id") @db.Char(36)
+  approvalId         String?                 @unique @map("approval_id") @db.Char(36)
+  method             String                  @default("MANUAL") @db.VarChar(30)
+  actualText         String                  @map("actual_text") @db.LongText
+  actualTextHash     String                  @map("actual_text_hash") @db.Char(64)
+  postingIdentity    String                  @map("posting_identity") @db.VarChar(255)
+  responseUrl        String?                 @map("response_url") @db.VarChar(2048)
+  platformResponseId String?                 @map("platform_response_id") @db.VarChar(255)
+  publishedAt        DateTime                @map("published_at")
+  recordedAt         DateTime                @default(now()) @map("recorded_at")
+  recordedById       String                  @map("recorded_by_id") @db.Char(36)
+  verificationStatus PublicationVerification @default(USER_ATTESTED) @map("verification_status")
+  approvalCompliance ApprovalCompliance      @map("approval_compliance")
+  evidenceNote       String?                 @map("evidence_note") @db.Text
+  idempotencyKey     String                  @map("idempotency_key") @db.VarChar(100)
+  business           Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reply              LeadReply               @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  revision           LeadReplyRevision       @relation(fields: [revisionId], references: [id])
+  approval           LeadReplyApproval?      @relation(fields: [approvalId], references: [id])
+  recordedBy         User                    @relation("reply_publication_recorded_by", fields: [recordedById], references: [id])
+
+  @@unique([businessId, idempotencyKey])
+  @@map("lead_reply_publications")
+}
+
+model BusinessOutreachPolicy {
+  id                String   @id @default(uuid()) @db.Char(36)
+  businessId        String   @unique @map("business_id") @db.Char(36)
+  version           Int      @default(1)
+  speakerName       String   @default("") @map("speaker_name") @db.VarChar(100)
+  speakerRole       String   @default("") @map("speaker_role") @db.VarChar(150)
+  allowBusinessName Boolean  @default(true) @map("allow_business_name")
+  allowPublicLinks  Boolean  @default(false) @map("allow_public_links")
+  allowedUrls       Json     @map("allowed_urls")
+  approvedClaims    Json     @map("approved_claims")
+  ctaStyle          String   @default("Helpful and low pressure") @map("cta_style") @db.Text
+  excludedTopics    Json     @map("excluded_topics")
+  maxReplyLength    Int      @default(1200) @map("max_reply_length")
+  updatedById       String   @map("updated_by_id") @db.Char(36)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  updatedBy         User     @relation("outreach_policy_updated_by", fields: [updatedById], references: [id])
+
+  @@map("business_outreach_policies")
 }
 
 model MarketingPlan {

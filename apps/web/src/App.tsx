@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, NavLink } from 'react-router-dom';
+import { Routes, Route, NavLink, Navigate, Link } from 'react-router-dom';
 import {
   LayoutDashboard,
   Building2,
@@ -7,21 +7,25 @@ import {
   Library,
   CalendarDays,
   Inbox,
-  ChartNoAxesCombined,
-  Megaphone,
-  Workflow,
   Settings,
-  Search,
   Plus,
   Check,
   Clock3,
   AlertTriangle,
   CircleHelp,
   Sparkles,
+  MonitorSmartphone,
   Menu,
+  Wand2,
+  Radio,
+  Loader2,
   X,
+  UserRound,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import { api } from './api';
+import { PRODUCT_VERSION_LABEL } from '@click/shared/version';
 type Business = {
   id: string;
   name: string;
@@ -33,26 +37,26 @@ type Business = {
   website?: { healthScore: number | null; lastCrawledAt: string | null };
 };
 type Ctx = {
+  user: { id: string; name: string; email: string };
   businesses: Business[];
   selected: Business | null;
   select: (b: Business) => void;
   refresh: () => Promise<void>;
+  updateUser: (user: { id: string; name: string; email: string }) => void;
 };
-const icons = {
-  Dashboard: LayoutDashboard,
-  Businesses: Building2,
-  'Website & SEO': Globe2,
-  Content: Library,
-  Calendar: CalendarDays,
-  'Approvals & Actions': Inbox,
-  Analytics: ChartNoAxesCombined,
-  Advertising: Megaphone,
-  Automations: Workflow,
-  Settings,
-};
-const nav = Object.entries(icons);
+const nav = [
+  { label: 'Dashboard', icon: LayoutDashboard, to: '/dashboard' },
+  { label: 'Businesses', icon: Building2, to: '/businesses' },
+  { label: 'Website', icon: Globe2, to: '/website' },
+  { label: 'Content', icon: Library, to: '/content' },
+  { label: 'Calendar', icon: CalendarDays, to: '/calendar' },
+  { label: 'Lead Opportunities', icon: Radio, to: '/leads' },
+  { label: 'Approvals & Actions', icon: Inbox, to: '/approvals-actions' },
+  { label: 'Account Settings', icon: Settings, to: '/settings' },
+];
 function Shell({ ctx }: { ctx: Ctx }) {
   const [open, setOpen] = useState(false);
+  const initials = ctx.user.name.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
   return (
     <div className="app">
       <aside className={open ? 'open' : ''}>
@@ -68,24 +72,24 @@ function Shell({ ctx }: { ctx: Ctx }) {
           <X />
         </button>
         <nav>
-          {nav.map(([label, Icon], i) => (
+          {nav.map(({ label, icon: Icon, to }) => (
             <NavLink
               key={label}
-              to={i === 0 ? '/dashboard' : `/${label.toLowerCase().replace(/ & | /g, '-')}`}
-              className={i > 5 ? 'disabled' : ''}
+              to={to}
+              onClick={() => setOpen(false)}
             >
               <Icon size={19} />
               <span>{label}</span>
-              {i > 5 && <small>Soon</small>}
             </NavLink>
           ))}
         </nav>
         <div className="aside-foot">
-          <div className="avatar">AB</div>
+          <div className="avatar">{initials}</div>
           <div>
-            <b>Account</b>
-            <small>Workspace owner</small>
+            <b>{ctx.user.name}</b>
+            <small>{ctx.user.email}</small>
           </div>
+          <span className="app-version">{PRODUCT_VERSION_LABEL}</span>
         </div>
       </aside>
       <main>
@@ -107,21 +111,22 @@ function Shell({ ctx }: { ctx: Ctx }) {
             </select>
           </div>
           <div className="top-actions">
-            <button className="search">
-              <Search size={17} /> Search
-            </button>
-            <span className="avatar">AB</span>
+            <Link className="avatar avatar-link" to="/settings" aria-label="Open account settings">{initials}</Link>
           </div>
         </header>
         <Routes>
-          <Route path="/dashboard" element={<Dashboard ctx={ctx} />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={ctx.selected ? <Dashboard ctx={ctx} /> : <EmptyWorkspace />} />
           <Route path="/businesses" element={<Businesses ctx={ctx} />} />
-          <Route path="/website-seo" element={<Seo ctx={ctx} />} />
+          <Route path="/website" element={<Seo ctx={ctx} />} />
+          <Route path="/website-seo" element={<Navigate to="/website" replace />} />
           <Route path="/content" element={<Content ctx={ctx} />} />
           <Route path="/calendar" element={<Calendar ctx={ctx} />} />
+          <Route path="/leads" element={<LeadOpportunities ctx={ctx} />} />
           <Route path="/approvals-actions" element={<InboxPage ctx={ctx} />} />
           <Route path="/marketing-inbox" element={<InboxPage ctx={ctx} />} />
-          <Route path="*" element={<Coming />} />
+          <Route path="/settings" element={<AccountSettings ctx={ctx} />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
     </div>
@@ -139,29 +144,31 @@ function Dashboard({ ctx }: { ctx: Ctx }) {
       title={`Good morning — let’s grow ${d.business.name}.`}
       sub="Here’s what deserves your attention today."
       action="Create content"
+      onAction={() => (document.location.href = '/content')}
     >
       <div className="hero">
         <div>
           <span className="eyebrow score-title">TECHNICAL AUDIT HEALTH <ScoreTooltip /></span>
           <div className="score">
+            <span>Score</span>
             {m.healthScore ?? '—'}
             <small>/100</small>
           </div>
           <p>{m.healthBreakdown?.label ?? 'Available after the first audit'} · Based on measurable technical checks, not Google rankings.</p>
         </div>
-        <button onClick={() => (document.location.href = '/website-seo')}>
+        <button onClick={() => (document.location.href = '/website')}>
           View website report →
         </button>
       </div>
       <div className="metrics">
         <Metric icon={<Globe2 />} n={m.pages} label="Pages analysed" />
-        <Metric icon={<AlertTriangle />} n={m.issues} label="SEO issues" tone="red" />
-        <Metric icon={<Library />} n={m.drafts} label="Drafts to review" tone="purple" />
-        <Metric icon={<Clock3 />} n={m.planned} label="Items planned" tone="gold" />
+        <Metric icon={<AlertTriangle />} n={m.issues} label="SEO issues" tone="red" to="/website" />
+        <Metric icon={<Library />} n={m.drafts} label="Drafts to review" tone="purple" to="/content" />
+        <Metric icon={<Clock3 />} n={m.planned} label="Items planned" tone="gold" to="/calendar" />
       </div>
       <div className="grid">
         <section>
-          <SectionTitle title="Priority actions" link="Open Approvals & Actions" />
+          <SectionTitle title="Priority actions" link="Open Approvals & Actions" to="/approvals-actions" />
           <div className="empty">
             <Check />
             <h3>You’re all caught up</h3>
@@ -169,7 +176,7 @@ function Dashboard({ ctx }: { ctx: Ctx }) {
           </div>
         </section>
         <section>
-          <SectionTitle title="Recent content" link="View library" />
+          <SectionTitle title="Recent content" link="View library" to="/content" />
           {d.recentContent.length ? (
             d.recentContent.map((c: any) => (
               <div className="row" key={c.id}>
@@ -193,21 +200,40 @@ function Dashboard({ ctx }: { ctx: Ctx }) {
     </Page>
   );
 }
-const Metric = ({ icon, n, label, tone = 'blue' }: any) => (
-  <div className={`metric ${tone}`}>
+const Metric = ({ icon, n, label, tone = 'blue', to }: any) => {
+  const content = <>
     <span>{icon}</span>
     <div>
       <strong>{n}</strong>
       <small>{label}</small>
     </div>
-  </div>
-);
+    {to && <span className="metric-arrow" aria-hidden="true">→</span>}
+  </>;
+  return to ? (
+    <Link className={`metric metric-link ${tone}`} to={to} aria-label={`View ${label}`}>
+      {content}
+    </Link>
+  ) : (
+    <div className={`metric ${tone}`}>{content}</div>
+  );
+};
 function Businesses({ ctx }: { ctx: Ctx }) {
+  const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const createBusiness = async (event: any) => {
+    event.preventDefault(); setSaving(true); setError('');
+    try {
+      const business = await api<Business>('/api/businesses', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      await ctx.refresh(); ctx.select(business); setAdding(false);
+    } catch (error) { setError((error as Error).message); } finally { setSaving(false); }
+  };
   return (
     <Page
       title="Businesses"
       sub="Manage the brands in your marketing workspace."
       action="Add business"
+      onAction={() => setAdding(true)}
     >
       <div className="cards">
         {ctx.businesses.map((b) => (
@@ -224,26 +250,101 @@ function Businesses({ ctx }: { ctx: Ctx }) {
           </article>
         ))}
       </div>
+      {!ctx.businesses.length && <div className="empty"><Building2 /><h3>Create your first business</h3><p>Add the website you want Click Marketing Agent to audit and improve.</p><button className="primary" onClick={() => setAdding(true)}><Plus size={17} />Add business</button></div>}
+      {adding && <div className="modal-backdrop" onMouseDown={() => setAdding(false)}><aside className="review-panel business-editor" role="dialog" aria-modal="true" aria-labelledby="new-business-title" onMouseDown={(event) => event.stopPropagation()}><div className="review-header"><div><span className="eyebrow">NEW WORKSPACE</span><small>Business details</small></div><button className="icon-button" onClick={() => setAdding(false)} aria-label="Close"><X /></button></div><form className="review-body" onSubmit={createBusiness}><h2 id="new-business-title">Add a business</h2><label className="editor-field">Business name<input name="name" minLength={2} required /></label><label className="editor-field">Website URL<input name="websiteUrl" type="url" placeholder="https://www.example.com" required /></label><label className="editor-field">What does the business do?<textarea name="description" rows={3} /></label><div className="editor-options"><label className="editor-field">Industry<input name="industry" /></label><label className="editor-field">Location<input name="location" /></label></div>{error && <p className="settings-message error">{error}</p>}<div className="review-actions embedded"><button type="button" className="dismiss-button" onClick={() => setAdding(false)}>Cancel</button><button className="complete-button" disabled={saving}><Check size={17} />{saving ? 'Creating…' : 'Create business'}</button></div></form></aside></div>}
     </Page>
   );
 }
+
+function EmptyWorkspace() {
+  return <Page title="Welcome to Click Marketing Agent" sub="Your account is ready. Add your first business to begin."><div className="empty welcome-empty"><Building2 /><h3>Start with a business website</h3><p>Each business has its own audits, content library, calendar and settings.</p><Link className="primary" to="/businesses"><Plus size={17} />Add your first business</Link></div></Page>;
+}
 function Seo({ ctx }: { ctx: Ctx }) {
+  const [activeTab, setActiveTab] = useState<'SEO' | 'LAYOUT' | 'CONNECTIONS'>('SEO');
   const [data, setData] = useState<any>();
   const [automation, setAutomation] = useState<any>();
+  const [visualAudits, setVisualAudits] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
+  const [visualBusy, setVisualBusy] = useState(false);
   const [selectedIssue, setSelectedIssue] = useState<any>(null);
+  const [inspectedIssue, setInspectedIssue] = useState<any>(null);
+  const [fixingId, setFixingId] = useState<string | null>(null);
+  const [fixingAll, setFixingAll] = useState(false);
+  const [fixResultMsg, setFixResultMsg] = useState<string | null>(null);
+
+  const connected = automation?.connection?.status === 'CONNECTED' && automation?.connection?.target === 'STAGING';
+  const openIssues = data?.issues?.filter((i: any) => i.status !== 'COMPLETED' && i.status !== 'DISMISSED') ?? [];
+  const fixingIssue = data?.issues?.find((i: any) => i.id === fixingId);
+  const isAutoFixing = fixingAll || Boolean(fixingId);
+
+  const handleAutoFix = async (issue: any) => {
+    setFixingId(issue.id);
+    setFixResultMsg(null);
+    try {
+      await api(`/api/seo/${issue.id}/auto-fix`, {
+        method: 'POST',
+        body: '{}',
+      });
+      setFixResultMsg(`Successfully applied fix for "${issue.title}" to staging WordPress.`);
+      await load();
+    } catch (error) {
+      alert((error as Error).message);
+    } finally {
+      setFixingId(null);
+    }
+  };
+
+  const handleAutoFixAll = async () => {
+    if (!ctx.selected) return;
+    if (!confirm(`Generate and apply automated fixes for all ${openIssues.length} open SEO findings to the verified staging copy? The live website will not be changed.`)) return;
+    setFixingAll(true);
+    setFixResultMsg(null);
+    try {
+      const result = await api<any>(`/api/businesses/${ctx.selected.id}/seo/auto-fix-all`, {
+        method: 'POST',
+        body: '{}',
+      });
+      setFixResultMsg(`Applied fixes to staging WordPress: ${result.fixed} completed, ${result.failed} failed.`);
+      await load();
+    } catch (error) {
+      alert((error as Error).message);
+    } finally {
+      setFixingAll(false);
+    }
+  };
+
   const load = async () => {
     if (!ctx.selected) return;
-    const [seo, settings] = await Promise.all([
+    const [seo, settings, visuals] = await Promise.all([
       api(`/api/businesses/${ctx.selected.id}/seo`),
       api(`/api/businesses/${ctx.selected.id}/automation`),
+      api<any[]>(`/api/businesses/${ctx.selected.id}/visual-audits`),
     ]);
     setData(seo);
     setAutomation(settings);
+    setVisualAudits(visuals);
+  };
+  const visualAudit = async () => {
+    if (!ctx.selected) return;
+    setVisualBusy(true);
+    try {
+      await api(`/api/businesses/${ctx.selected.id}/visual-audits`, { method: 'POST', body: '{}' });
+      await load();
+    } catch (error) {
+      alert((error as Error).message);
+      await load();
+    } finally {
+      setVisualBusy(false);
+    }
   };
   useEffect(() => {
     void load();
   }, [ctx.selected]);
+  useEffect(() => {
+    if (data?.issues?.length && !data.issues.some((issue: any) => issue.id === inspectedIssue?.id)) {
+      setInspectedIssue(data.issues[0]);
+    }
+  }, [data, inspectedIssue?.id]);
   const crawl = async () => {
     if (!ctx.selected) return;
     setBusy(true);
@@ -271,12 +372,31 @@ function Seo({ ctx }: { ctx: Ctx }) {
   };
   return (
     <Page
-      title="Website & SEO"
-      sub="Understand the issues that matter, without the jargon."
-      action={busy ? 'Crawling…' : 'Run website audit'}
-      onAction={crawl}
+      title={`${ctx.selected?.name ?? 'Business'} website`}
+      sub="Audit, improve and safely test changes from one connected workspace."
+      action={activeTab === 'SEO' ? (busy ? 'Crawling website…' : 'Run SEO audit') : activeTab === 'LAYOUT' ? (visualBusy ? 'Checking layouts…' : 'Run layout audit') : undefined}
+      onAction={activeTab === 'SEO' ? crawl : activeTab === 'LAYOUT' ? visualAudit : undefined}
+      actionDisabled={activeTab === 'SEO' ? busy || isAutoFixing : activeTab === 'LAYOUT' ? visualBusy || !data?.currentCrawl : false}
+      actionIcon={(busy || visualBusy) ? <Loader2 size={17} className="animate-spin" /> : activeTab === 'LAYOUT' ? <MonitorSmartphone size={17} /> : undefined}
     >
-      <div className="seo-head">
+      <div className="workspace-context" aria-label="Current location">
+        <span>{ctx.selected?.name}</span><b>›</b><span>Website</span><b>›</b><strong>{activeTab === 'SEO' ? 'SEO audit' : activeTab === 'LAYOUT' ? 'Layout audit' : 'Connections'}</strong>
+      </div>
+      <nav className="workspace-tabs" aria-label="Website sections">
+        <button className={activeTab === 'SEO' ? 'active' : ''} onClick={() => setActiveTab('SEO')}><Globe2 size={17} /><span>SEO audit</span><small>{data?.issues?.length ?? 0}</small></button>
+        <button className={activeTab === 'LAYOUT' ? 'active' : ''} onClick={() => setActiveTab('LAYOUT')}><MonitorSmartphone size={17} /><span>Layout audit</span><small>{visualAudits[0]?.result?.findings?.length ?? 0}</small></button>
+        <button className={activeTab === 'CONNECTIONS' ? 'active' : ''} onClick={() => setActiveTab('CONNECTIONS')}><Radio size={17} /><span>Connections & fixes</span><small className={connected ? 'tab-status connected' : 'tab-status'}>{connected ? 'Connected' : 'Setup'}</small></button>
+      </nav>
+      {busy && <CrawlProgressBanner websiteUrl={ctx.selected?.websiteUrl} />}
+      {isAutoFixing && (
+        <AutoFixProgressBanner
+          isFixAll={fixingAll}
+          issue={fixingIssue}
+          totalCount={openIssues.length}
+          websiteUrl={automation?.connection?.baseUrl}
+        />
+      )}
+      {activeTab === 'SEO' && <><div className="seo-head">
         <div className="ring">
           {data?.healthScore ?? '—'}
           <small>/100</small>
@@ -323,26 +443,95 @@ function Seo({ ctx }: { ctx: Ctx }) {
             ))}
           </details>
         </>
-      )}
-      {automation && ctx.selected && (
+      )}</>}
+      {activeTab === 'LAYOUT' && <VisualAuditPanel audits={visualAudits} busy={visualBusy} onRun={visualAudit} hasCrawl={Boolean(data?.currentCrawl)} />}
+      {activeTab === 'CONNECTIONS' && automation && ctx.selected && (
         <AutomationPanel businessId={ctx.selected.id} value={automation} onChange={setAutomation} />
       )}
-      <section>
-        <SectionTitle title="SEO findings" link="" />
+      {activeTab === 'SEO' && <section className="seo-findings-section">
+        <div className="seo-findings-header">
+          <div>
+            <h3>SEO findings</h3>
+            <p className="seo-findings-status">
+              {connected ? (
+                <span className="auto-fix-connected-badge"><Check size={13} /> Staging WordPress connected for test fixes</span>
+              ) : (
+                <span className="auto-fix-disconnected-badge"><AlertTriangle size={13} /> Connect staging WordPress to enable test fixes</span>
+              )}
+            </p>
+          </div>
+          <div className="seo-findings-actions">
+            <button
+              className="primary auto-fix-all-btn"
+              onClick={handleAutoFixAll}
+              disabled={fixingAll || !connected || openIssues.length === 0}
+              title={connected ? `Apply all ${openIssues.length} supported fixes to staging WordPress` : 'Connect staging WordPress first'}
+            >
+              <Wand2 size={15} />
+              {fixingAll ? 'Fixing all findings…' : `Auto-fix All (${openIssues.length})`}
+            </button>
+          </div>
+        </div>
+        {isAutoFixing && (
+          <AutoFixProgressBanner
+            isFixAll={fixingAll}
+            issue={fixingIssue}
+            totalCount={openIssues.length}
+            websiteUrl={automation?.connection?.baseUrl}
+          />
+        )}
+        {fixResultMsg && (
+          <div className="auto-fix-result-banner">
+            <span>{fixResultMsg}</span>
+            <button className="icon-button" onClick={() => setFixResultMsg(null)} aria-label="Dismiss message">
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {data?.issues?.length ? (
-          data.issues.map((i: any) => (
-            <div className="issue" key={i.id}>
+          <div className="audit-workbench seo-workbench">
+            <div className="audit-list-pane">
+              <div className="pane-heading"><div><span className="eyebrow">FINDINGS</span><h3>{data.issues.length} SEO issues</h3></div><small>Select an issue to inspect it</small></div>
+          {data.issues.map((i: any) => (
+            <div className={`issue ${inspectedIssue?.id === i.id ? 'selected' : ''}`} key={i.id} onClick={() => setInspectedIssue(i)}>
               <span className={`severity ${i.severity.toLowerCase()}`}>{i.severity}</span>
               <div>
                 <b>{i.title}</b>
-                <p>{i.explanation}</p>
                 <small>
                   {i.page?.url} · {i.status.replaceAll('_', ' ')}
                 </small>
               </div>
-              <button onClick={() => setSelectedIssue(i)}>Review</button>
+              <div className="issue-actions">
+                {i.status === 'COMPLETED' ? (
+                  <span className="status-fixed-pill"><Check size={13} /> Fixed</span>
+                ) : (
+                  <button
+                    className="auto-fix-single-btn"
+                    onClick={(event) => { event.stopPropagation(); void handleAutoFix(i); }}
+                    disabled={fixingId === i.id || fixingAll || !connected}
+                    title={connected ? 'Generate and apply this fix to staging WordPress' : 'Connect staging WordPress first'}
+                  >
+                    <Wand2 size={13} />
+                    {fixingId === i.id ? 'Fixing…' : 'Auto-fix'}
+                  </button>
+                )}
+                <button className="review-btn" onClick={(event) => { event.stopPropagation(); setSelectedIssue(i); }}>Full review</button>
+              </div>
             </div>
-          ))
+          ))}
+            </div>
+            <div className="audit-detail-pane">
+              {inspectedIssue ? <>
+                <div className="detail-kicker"><span className={`severity ${inspectedIssue.severity.toLowerCase()}`}>{inspectedIssue.severity}</span><span>{inspectedIssue.category}</span></div>
+                <h2>{inspectedIssue.title}</h2>
+                <a className="page-link" href={inspectedIssue.page?.url} target="_blank" rel="noreferrer"><Globe2 size={15} />{inspectedIssue.page?.url}</a>
+                <div className="detail-block"><span>WHY IT MATTERS</span><p>{inspectedIssue.explanation}</p></div>
+                <div className="detail-block recommendation"><span>HOW TO FIX IT</span><p>{inspectedIssue.suggestedAction}</p></div>
+                <button className="primary detail-review-button" onClick={() => setSelectedIssue(inspectedIssue)}>Review instructions & suggested content</button>
+                <p className="detail-footnote">Review opens the exact field, current value and AI-assisted content tools.</p>
+              </> : null}
+            </div>
+          </div>
         ) : (
           <div className="empty">
             <Globe2 />
@@ -350,7 +539,7 @@ function Seo({ ctx }: { ctx: Ctx }) {
             <p>Run a website audit to discover pages and actionable SEO improvements.</p>
           </div>
         )}
-      </section>
+      </section>}
       {selectedIssue && (
         <SeoReview
           issue={selectedIssue}
@@ -359,6 +548,199 @@ function Seo({ ctx }: { ctx: Ctx }) {
         />
       )}
     </Page>
+  );
+}
+
+function CrawlProgressBanner({ websiteUrl }: { websiteUrl?: string | undefined }) {
+  const [seconds, setSeconds] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
+
+  const stages = [
+    { label: 'Connecting to website & purging cache…', detail: 'Contacting server and purging WordPress/edge cache rules' },
+    { label: 'Discovering internal pages & crawling links…', detail: 'Inspecting same-domain routes and following navigations' },
+    { label: 'Extracting HTML, headings, titles & meta…', detail: 'Parsing H1/H2 tags, descriptions, open graph data, and alt text' },
+    { label: 'Auditing SEO issues & calculating health score…', detail: 'Running deterministic rules and compiling recommendations' },
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setSeconds((s) => s + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const stageTimer = setInterval(() => {
+      setStageIndex((prev) => (prev + 1) % stages.length);
+    }, 3200);
+    return () => clearInterval(stageTimer);
+  }, [stages.length]);
+
+  const current = stages[stageIndex] ?? stages[0]!;
+
+  return (
+    <div className="crawl-banner" role="status" aria-live="polite">
+      <div className="crawl-banner-left">
+        <div className="crawl-radar">
+          <div className="crawl-radar-pulse" />
+          <Globe2 size={22} className="crawl-globe" />
+        </div>
+      </div>
+      <div className="crawl-banner-main">
+        <div className="crawl-banner-header">
+          <div className="crawl-banner-title">
+            <Radio size={15} className="crawl-radio-icon" />
+            <strong>Auditing Website in Progress</strong>
+            <span className="crawl-timer-badge">{seconds}s elapsed</span>
+          </div>
+          <span className="crawl-status-badge">Live Crawl Active</span>
+        </div>
+        <p className="crawl-stage-label">{current.label}</p>
+        <p className="crawl-stage-detail">{current.detail} · Target: <code>{websiteUrl || 'Selected Website'}</code></p>
+        <div className="crawl-progress-track">
+          <div className="crawl-progress-fill" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AutoFixProgressBanner({
+  isFixAll,
+  issue,
+  totalCount,
+  websiteUrl,
+}: {
+  isFixAll: boolean;
+  issue?: any;
+  totalCount?: number;
+  websiteUrl?: string;
+}) {
+  const [seconds, setSeconds] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
+
+  const singleStages = [
+    { label: 'Analyzing issue & generating AI SEO solution…', detail: 'Evaluating business profile and generating optimized replacement content' },
+    { label: 'Connecting to WordPress REST API…', detail: 'Authenticating with Application Password & locating target page' },
+    { label: 'Publishing staging metadata & content updates…', detail: 'Writing approved fields to the verified staging copy only' },
+    { label: 'Purging server & page caches…', detail: 'Flushing LiteSpeed, WP Rocket and edge caches on WordPress' },
+    { label: 'Verifying change & updating workflow status…', detail: 'Recording change logs and marking finding resolved' },
+  ];
+
+  const bulkStages = [
+    { label: `Sequencing ${totalCount ?? 0} open SEO findings…`, detail: 'Preparing automated queue for batch resolution' },
+    { label: 'Generating AI content & metadata replacements…', detail: 'Creating tailored titles, headings and meta descriptions for affected pages' },
+    { label: 'Publishing batch updates to staging WordPress…', detail: 'Applying authorized changes to the verified staging copy only' },
+    { label: 'Purging server & caching layers…', detail: 'Triggering cache clear across WordPress caching plugins' },
+    { label: 'Recording audit change log & finalizing fixes…', detail: 'Marking completed items and updating SEO health records' },
+  ];
+
+  const stages = isFixAll ? bulkStages : singleStages;
+
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const stageTimer = setInterval(() => {
+      setStageIndex((prev) => (prev + 1) % stages.length);
+    }, 2800);
+    return () => clearInterval(stageTimer);
+  }, [stages.length]);
+
+  const current = stages[stageIndex] ?? stages[0]!;
+
+  return (
+    <div className="autofix-banner" role="status" aria-live="polite">
+      <div className="autofix-banner-left">
+        <div className="autofix-radar">
+          <div className="autofix-radar-pulse" />
+          <Wand2 size={22} className="autofix-icon" />
+        </div>
+      </div>
+      <div className="autofix-banner-main">
+        <div className="autofix-banner-header">
+          <div className="autofix-banner-title">
+            <Sparkles size={16} className="autofix-sparkle-icon" />
+            <strong>
+              {isFixAll
+                ? `Automated Bulk Fix in Progress (${totalCount ?? 0} Findings)`
+                : `Automated Fix in Progress: ${issue?.title ?? 'SEO Finding'}`}
+            </strong>
+            <span className="autofix-timer-badge">{seconds}s elapsed</span>
+          </div>
+          <span className="autofix-status-badge">
+            <Wand2 size={12} /> Staging Auto-Fix Active
+          </span>
+        </div>
+        <p className="autofix-stage-label">{current.label}</p>
+        <p className="autofix-stage-detail">
+          {current.detail} · Target:{' '}
+          <code>{issue?.page?.url || websiteUrl || 'WordPress Site'}</code>
+        </p>
+        <div className="autofix-progress-track">
+          <div className="autofix-progress-fill" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VisualAuditPanel({ audits, busy, onRun, hasCrawl }: any) {
+  const latest = audits.find((audit: any) => audit.status === 'COMPLETED') ?? audits[0];
+  const result = latest?.result;
+  const [selectedFinding, setSelectedFinding] = useState<any>(null);
+  useEffect(() => {
+    setSelectedFinding(result?.findings?.[0] ?? null);
+  }, [latest?.id]);
+  return (
+    <section className="visual-audit-panel">
+      <div className="visual-audit-heading">
+        <div>
+          <span className="eyebrow">AI LAYOUT REVIEW</span>
+          <h2>Visual consistency</h2>
+          <p>Compares desktop and mobile screenshots across pages for inconsistent headers, typography, spacing, colours, buttons, forms, imagery and footers.</p>
+        </div>
+        <button className="primary" onClick={onRun} disabled={busy || !hasCrawl}>
+          <MonitorSmartphone size={17} /> {busy ? 'Capturing and comparing pages…' : result ? 'Run again' : 'Run AI layout check'}
+        </button>
+      </div>
+      <p className="visual-audit-note"><CircleHelp size={15} /> Run the normal website audit first. Each layout check captures up to 10 discovered pages in desktop and mobile sizes and uses OpenAI API credits. It does not change the website.</p>
+      {!hasCrawl && <div className="visual-empty">Run a website audit to discover pages before checking their layout.</div>}
+      {latest?.status === 'FAILED' && <div className="connector-error">The latest visual audit failed: {latest.error}</div>}
+      {result && <>
+        <div className="visual-score-row">
+          <div className="visual-score"><strong>{result.score}</strong><span>/100</span><small>Visual consistency score</small></div>
+          <div><h3>{result.summary}</h3><small>{latest.pagesAudited} pages · desktop and mobile · {new Date(latest.completedAt).toLocaleString()}</small></div>
+        </div>
+        {result.consistentPatterns?.length > 0 && <details className="visual-strengths">
+          <summary>What is consistent ({result.consistentPatterns.length})</summary>
+          <ul>{result.consistentPatterns.map((pattern: string) => <li key={pattern}>{pattern}</li>)}</ul>
+        </details>}
+        <div className="audit-workbench visual-findings">
+          <div className="audit-list-pane">
+            <div className="pane-heading"><div><span className="eyebrow">FINDINGS</span><h3>{result.findings.length} layout issues</h3></div><small>Select an issue to inspect it</small></div>
+            {result.findings.length ? result.findings.map((finding: any, index: number) => (
+              <button className={`audit-list-item ${selectedFinding === finding ? 'selected' : ''}`} onClick={() => setSelectedFinding(finding)} key={`${finding.url}-${finding.category}-${index}`}>
+                <span className={`severity ${finding.severity.toLowerCase()}`}>{finding.severity}</span>
+                <span><strong>{finding.title}</strong><small>{finding.category.replaceAll('_', ' ')} · {finding.viewport}</small></span>
+              </button>
+            )) : <div className="visual-empty">No material visual inconsistencies were identified in the captured pages.</div>}
+          </div>
+          <div className="audit-detail-pane">
+            {selectedFinding ? <>
+              <div className="detail-kicker"><span className={`severity ${selectedFinding.severity.toLowerCase()}`}>{selectedFinding.severity}</span><span className="visual-viewport">{selectedFinding.viewport}</span></div>
+              <h2>{selectedFinding.title}</h2>
+              <a className="page-link" href={selectedFinding.url} target="_blank" rel="noreferrer"><Globe2 size={15} />{selectedFinding.url}</a>
+              <div className="detail-block"><span>WHAT THE AI OBSERVED</span><p>{selectedFinding.evidence}</p></div>
+              <div className="detail-block recommendation"><span>RECOMMENDED CORRECTION</span><p>{selectedFinding.recommendation}</p></div>
+              <p className="detail-footnote">The layout audit is advisory and does not change the website.</p>
+            </> : <div className="detail-placeholder"><MonitorSmartphone /><h3>Select a finding</h3><p>Its evidence and recommended correction will appear here.</p></div>}
+          </div>
+        </div>
+      </>}
+    </section>
   );
 }
 
@@ -374,7 +756,15 @@ function ScoreTooltip() {
 function AutomationPanel({ businessId, value, onChange }: any) {
   const [draft, setDraft] = useState(value);
   const [saved, setSaved] = useState(false);
-  useEffect(() => setDraft(value), [value]);
+  const [wpUsername, setWpUsername] = useState('');
+  const [wpPassword, setWpPassword] = useState('');
+  const [connectionBusy, setConnectionBusy] = useState(false);
+  const [connectionError, setConnectionError] = useState('');
+  const [stagingUrl, setStagingUrl] = useState(value.connection?.stagingBaseUrl ?? 'http://localhost/wordpress');
+  useEffect(() => {
+    setDraft(value);
+    setStagingUrl(value.connection?.stagingBaseUrl ?? 'http://localhost/wordpress');
+  }, [value]);
   const connected = draft.connection?.status === 'CONNECTED';
   const rules = draft.rules ?? {};
   const updateRule = (key: string, checked: boolean) => {
@@ -397,6 +787,42 @@ function AutomationPanel({ businessId, value, onChange }: any) {
     } catch (error) {
       alert((error as Error).message);
     }
+  };
+  const connectWordPress = async () => {
+    setConnectionBusy(true); setConnectionError('');
+    try {
+      const connection = await api(`/api/businesses/${businessId}/connectors/wordpress/connect`, {
+        method: 'POST', body: JSON.stringify({
+          username: wpUsername,
+          applicationPassword: wpPassword,
+          target: 'STAGING',
+          baseUrl: stagingUrl,
+        }),
+      });
+      const next = { ...draft, connection };
+      setDraft(next); onChange(next); setWpPassword('');
+    } catch (error) { setConnectionError((error as Error).message); }
+    finally { setConnectionBusy(false); }
+  };
+  const testWordPress = async () => {
+    setConnectionBusy(true); setConnectionError('');
+    try {
+      const connection = await api(`/api/businesses/${businessId}/connectors/wordpress/test`, { method: 'POST', body: '{}' });
+      const next = { ...draft, connection };
+      setDraft(next); onChange(next);
+    } catch (error) { setConnectionError((error as Error).message); }
+    finally { setConnectionBusy(false); }
+  };
+  const disconnect = async () => {
+    if (!confirm('Disconnect this website and remove its saved access token from Click Marketing Agent?')) return;
+    setConnectionBusy(true); setConnectionError('');
+    try {
+      await api(`/api/businesses/${businessId}/connector`, { method: 'DELETE' });
+      const connection = { provider: 'NONE', status: 'DISCONNECTED', username: null, verifiedAt: null };
+      const next = { ...draft, mode: draft.mode === 'AUTO_LOW_RISK' ? 'APPROVAL_REQUIRED' : draft.mode, connection };
+      setDraft(next); onChange(next); setWpUsername(''); setWpPassword('');
+    } catch (error) { setConnectionError((error as Error).message); }
+    finally { setConnectionBusy(false); }
   };
   const options: Array<[string, string, string]> = [
     ['RECOMMEND_ONLY', 'Recommend only', 'Show instructions and suggested content; never change the website.'],
@@ -446,8 +872,60 @@ function AutomationPanel({ businessId, value, onChange }: any) {
       </div>
       <div className="automation-notice">
         <AlertTriangle size={18} />
-        <span>Publishing is locked until a verified connector is installed. Normal website admin passwords will not be stored; supported connections will use revocable access tokens.</span>
+        <span>{connected
+          ? <><strong>Staging WordPress access verified.</strong> Automated changes are restricted to <code>{draft.connection.baseUrl}</code>. The live website remains read-only.</>
+          : <><strong>No verified staging connection.</strong> Connect the XAMPP WordPress copy below. Live-site automation is disabled.</>}</span>
       </div>
+      {(draft.connection?.provider === 'WORDPRESS' || connected) && (
+        <div className="wordpress-connect">
+          <div className="connector-title">
+            <div><strong>WordPress staging connection</strong><small>Uses the standard WordPress REST API and a dedicated Application Password. The live hostname cannot be used here.</small></div>
+            {connected && <span className="connection-state connected">Verified</span>}
+          </div>
+          {connected ? <>
+            <dl className="connection-details">
+              <div><dt>WordPress user</dt><dd>{draft.connection.username}</dd></div>
+              <div><dt>Last verified</dt><dd>{draft.connection.verifiedAt ? new Date(draft.connection.verifiedAt).toLocaleString() : 'Just now'}</dd></div>
+              <div><dt>Execution target</dt><dd>Staging only</dd></div>
+              <div><dt>Staging URL</dt><dd>{draft.connection.baseUrl}</dd></div>
+            </dl>
+            <div className="connector-actions">
+              <button type="button" onClick={testWordPress} disabled={connectionBusy}>{connectionBusy ? 'Testing…' : 'Test connection'}</button>
+              <button type="button" className="danger-link" onClick={disconnect} disabled={connectionBusy}>Disconnect and remove token</button>
+            </div>
+          </> : <>
+            <ol className="wp-setup-steps">
+              <li>Sign in to your WordPress admin area in a separate browser tab.</li>
+              <li>Open <strong>Users → Profile</strong> (or <strong>Users → Your Profile</strong>). Copy the exact value beside <strong>Username</strong>; do not use the display name and preferably do not use the email address.</li>
+              <li>On the same page, find <strong>Application Passwords</strong>.</li>
+              <li>Enter <strong>Click Marketing Agent</strong> as the new application name, then select <strong>Add New Application Password</strong>.</li>
+              <li>Copy the generated password immediately and paste it below. WordPress shows it only once. This is not your normal sign-in password.</li>
+            </ol>
+            <div className="connector-fields">
+              <label>Local staging URL<input type="url" value={stagingUrl} onChange={(e) => setStagingUrl(e.target.value)} placeholder="http://localhost/wordpress" /></label>
+              <label>WordPress login username<input autoComplete="username" value={wpUsername} onChange={(e) => setWpUsername(e.target.value)} placeholder="Exact Username from Users → Profile" /></label>
+              <label>Application Password<input type="password" autoComplete="new-password" value={wpPassword} onChange={(e) => setWpPassword(e.target.value)} placeholder="xxxx xxxx xxxx xxxx xxxx xxxx" /></label>
+            </div>
+            <button type="button" className="connect-button" onClick={connectWordPress} disabled={connectionBusy || !stagingUrl.trim() || !wpUsername.trim() || wpPassword.trim().length < 8}>{connectionBusy ? 'Verifying…' : 'Connect and verify staging WordPress'}</button>
+          </>}
+          {connectionError && <p className="connector-error" role="alert">{connectionError}</p>}
+        </div>
+      )}
+      <details className="connection-guide">
+        <summary><CircleHelp size={18} /> How will I connect my website?</summary>
+        <div>
+          <p>When the connector for your platform is released, the connection process will work like this:</p>
+          <ol>
+            <li>Select your website platform and choose <strong>Connect website</strong>.</li>
+            <li>You will be sent to WordPress, Shopify, or the supported provider’s own secure sign-in page.</li>
+            <li>Sign in there and approve only the permissions needed to read and update supported website fields.</li>
+            <li>You will return here and see <strong>Site connected</strong> before any approved or automatic change can be published.</li>
+            <li>You can disconnect the site here or revoke access from the website platform at any time.</li>
+          </ol>
+          <p><strong>Important:</strong> do not paste your normal website administrator password into Click Marketing Agent. WordPress uses a separate Application Password, which is encrypted at rest and can be revoked without changing your normal password.</p>
+          <p className="connection-guide-status">Automated execution is currently restricted to a separately configured staging website. The live website remains available for audits and comparisons but cannot receive automated writes.</p>
+        </div>
+      </details>
       <button className="automation-save" onClick={save}>{saved ? 'Settings saved' : 'Save automation settings'}</button>
     </section>
   );
@@ -459,6 +937,8 @@ function SeoReview({ issue, onClose, onStatus }: any) {
   const [generating, setGenerating] = useState(false);
   const [saved, setSaved] = useState(false);
   const [prepared, setPrepared] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applied, setApplied] = useState(false);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
     window.addEventListener('keydown', closeOnEscape);
@@ -507,6 +987,27 @@ function SeoReview({ issue, onClose, onStatus }: any) {
       setPrepared(true);
     } catch (error) {
       alert((error as Error).message);
+    }
+  };
+  const applyToWordPress = async () => {
+    setApplying(true);
+    try {
+      if (suggestion && proposedValue.trim()) {
+        await api(`/api/recommendations/${suggestion.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ proposedValue }),
+        });
+      }
+      await api(`/api/seo/${issue.id}/auto-fix`, {
+        method: 'POST',
+        body: '{}',
+      });
+      setApplied(true);
+      onStatus('COMPLETED');
+    } catch (error) {
+      alert((error as Error).message);
+    } finally {
+      setApplying(false);
     }
   };
   const page = issue.page;
@@ -595,6 +1096,14 @@ function SeoReview({ issue, onClose, onStatus }: any) {
                     <button onClick={saveSuggestion}>{saved ? 'Saved' : 'Save suggestion'}</button>
                     <button className="prepare-button" onClick={prepareChange}>
                       {prepared ? 'Change prepared' : 'Prepare website change'}
+                    </button>
+                    <button
+                      className="primary auto-fix-modal-btn"
+                      onClick={applyToWordPress}
+                      disabled={applying || applied}
+                    >
+                      <Wand2 size={14} />
+                      {applying ? 'Applying…' : applied ? 'Applied to WordPress' : 'Apply fix to WordPress'}
                     </button>
                   </div>
                 </div>
@@ -1019,6 +1528,92 @@ function Calendar({ ctx }: { ctx: Ctx }) {
     </Page>
   );
 }
+function LeadOpportunities({ ctx }: { ctx: Ctx }) {
+  const [leads, setLeads] = useState<any[]>([]);
+  const [selected, setSelected] = useState<any>(null);
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ platform: 'REDDIT', originalUrl: '', postText: '', communityName: '', authorDisplayName: '' });
+  const [replyBody, setReplyBody] = useState('');
+  const [identity, setIdentity] = useState(ctx.user.name);
+  const [publication, setPublication] = useState({ responseUrl: '', evidenceNote: '', publishedAt: new Date().toISOString().slice(0, 16) });
+  const load = async () => {
+    if (!ctx.selected) return;
+    const data = await api<any[]>(`/api/businesses/${ctx.selected.id}/leads`);
+    setLeads(data);
+    if (selected) {
+      const fresh = await api<any>(`/api/leads/${selected.id}`);
+      setSelected(fresh);
+      setReplyBody(fresh.reply?.currentRevision?.body ?? '');
+      setIdentity(fresh.reply?.currentRevision?.postingIdentity ?? ctx.user.name);
+    }
+  };
+  useEffect(() => { setSelected(null); void load(); }, [ctx.selected]);
+  const openLead = async (id: string) => {
+    const detail = await api<any>(`/api/leads/${id}`);
+    setSelected(detail);
+    setReplyBody(detail.reply?.currentRevision?.body ?? '');
+    setIdentity(detail.reply?.currentRevision?.postingIdentity ?? ctx.user.name);
+  };
+  const act = async (operation: () => Promise<any>) => {
+    setBusy(true);
+    try {
+      const result = await operation();
+      const detail = result?.lead ?? result;
+      if (detail?.id && detail?.originalUrl) {
+        setSelected(detail);
+        setReplyBody(detail.reply?.currentRevision?.body ?? '');
+      } else if (selected) await openLead(selected.id);
+      await load();
+    } catch (error) { alert((error as Error).message); } finally { setBusy(false); }
+  };
+  const capture = async () => act(async () => {
+    const result = await api<any>(`/api/businesses/${ctx.selected!.id}/leads`, { method: 'POST', body: JSON.stringify(form) });
+    setAdding(false);
+    setForm({ platform: 'REDDIT', originalUrl: '', postText: '', communityName: '', authorDisplayName: '' });
+    if (result.duplicate) alert('This source was already captured. The existing opportunity has been opened.');
+    return api(`/api/leads/${result.lead.id}`);
+  });
+  const saveReply = () => act(() => selected.reply
+    ? api(`/api/lead-replies/${selected.reply.id}`, { method: 'PATCH', body: JSON.stringify({ body: replyBody, postingIdentity: identity, expectedVersion: selected.reply.version }) })
+    : api(`/api/leads/${selected.id}/reply`, { method: 'POST', body: JSON.stringify({ body: replyBody, postingIdentity: identity }) }));
+  const statusLabel = (lead: any) => lead.reply?.publication ? 'Published manually' : lead.reply?.contentItem?.status?.replaceAll('_', ' ') ?? lead.status;
+  return (
+    <Page title="Lead Opportunities" sub="Capture genuine public opportunities, prepare a reply and keep approval separate from publication." action="Add opportunity" onAction={() => setAdding(true)}>
+      <section className="lead-safety-note"><ShieldCheck /><div><strong>Human approval is required</strong><p>Click Marketing prepares and records replies, but does not post them externally. Publishing remains manual until an authorised connector is explicitly enabled.</p></div></section>
+      <div className="lead-workbench">
+        <section className="lead-list-pane">
+          <div className="lead-pane-heading"><span className="eyebrow">OPPORTUNITY INBOX</span><h2>{leads.length} captured</h2></div>
+          {leads.length ? leads.map((lead) => <button key={lead.id} className={`lead-list-item ${selected?.id === lead.id ? 'selected' : ''}`} onClick={() => void openLead(lead.id)}><span className="platform-badge">{lead.platform}</span><strong>{lead.postText.slice(0, 95)}{lead.postText.length > 95 ? '…' : ''}</strong><small>{lead.communityName || new URL(lead.originalUrl).hostname} · {statusLabel(lead)}</small></button>) : <div className="empty compact"><Radio /><h3>No opportunities yet</h3><p>Add a public post URL and its text to begin.</p></div>}
+        </section>
+        <section className="lead-detail-pane">
+          {!selected ? <div className="detail-placeholder"><Radio /><h3>Select an opportunity</h3><p>Its source, reply and complete decision history will appear here.</p></div> : <>
+            <div className="lead-detail-header"><div><span className="platform-badge">{selected.platform}</span><span className="pill">{statusLabel(selected)}</span></div><a href={selected.originalUrl} target="_blank" rel="noreferrer">Open original source ↗</a></div>
+            <div className="detail-block"><span>SOURCE POST</span><p className="source-post">{selected.postText}</p><small>{selected.authorDisplayName ? `Posted by ${selected.authorDisplayName}` : 'Author not recorded'}{selected.communityName ? ` in ${selected.communityName}` : ''}</small></div>
+            {selected.relevanceReason && <div className="detail-block recommendation"><span>WHY THIS MAY BE RELEVANT</span><p>{selected.relevanceReason}</p></div>}
+            <label className="editor-field">Posting identity<input value={identity} onChange={(event) => setIdentity(event.target.value)} /></label>
+            <label className="editor-field">Proposed reply<textarea rows={10} value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder="Write a reply manually or ask AI to prepare a suggestion." /></label>
+            <div className="lead-actions">
+              <button disabled={busy} onClick={() => act(() => api(`/api/leads/${selected.id}/reply/generate`, { method: 'POST', body: JSON.stringify({ postingIdentity: identity }) }))}><Sparkles size={17} /> Generate suggestion</button>
+              <button disabled={busy || !replyBody.trim()} onClick={saveReply}>Save new revision</button>
+              {selected.reply && <button disabled={busy} onClick={() => act(() => api(`/api/lead-replies/${selected.reply.id}/submit`, { method: 'POST' }))}>Submit for review</button>}
+            </div>
+            {selected.reply?.currentRevision && <div className="lead-decision-box">
+              <strong>Revision {selected.reply.currentRevision.revisionNumber}</strong><p>Approval applies only to this exact text and posting identity. Editing creates a new revision and invalidates approval.</p>
+              <div className="lead-actions"><button className="complete-button" disabled={busy} onClick={() => act(() => api(`/api/lead-replies/${selected.reply.id}/decisions`, { method: 'POST', body: JSON.stringify({ decision: 'APPROVED', revisionId: selected.reply.currentRevision.id, expectedVersion: selected.reply.version }) }))}><Check size={17} /> Approve exact revision</button><button className="dismiss-button" disabled={busy} onClick={() => { const reason = prompt('Why is this reply being rejected?'); if (reason) void act(() => api(`/api/lead-replies/${selected.reply.id}/decisions`, { method: 'POST', body: JSON.stringify({ decision: 'REJECTED', revisionId: selected.reply.currentRevision.id, expectedVersion: selected.reply.version, reason }) })); }}>Reject</button></div>
+            </div>}
+            {selected.reply?.activeApproval && !selected.reply?.publication && <div className="manual-publish-box"><strong>Approved for manual posting. Nothing has been posted by Click Marketing.</strong><div className="lead-actions"><button onClick={() => navigator.clipboard.writeText(selected.reply.currentRevision.body)}>Copy approved reply</button><a className="button-link" href={selected.originalUrl} target="_blank" rel="noreferrer">Open source</a></div><label>Response permalink (optional)<input value={publication.responseUrl} onChange={(e) => setPublication({ ...publication, responseUrl: e.target.value })} /></label><label>Published at<input type="datetime-local" value={publication.publishedAt} onChange={(e) => setPublication({ ...publication, publishedAt: e.target.value })} /></label><label>Evidence note (optional)<input value={publication.evidenceNote} onChange={(e) => setPublication({ ...publication, evidenceNote: e.target.value })} /></label><button disabled={busy} onClick={() => act(() => api(`/api/lead-replies/${selected.reply.id}/manual-publication`, { method: 'POST', body: JSON.stringify({ actualText: selected.reply.currentRevision.body, postingIdentity: selected.reply.currentRevision.postingIdentity, publishedAt: new Date(publication.publishedAt).toISOString(), responseUrl: publication.responseUrl || undefined, evidenceNote: publication.evidenceNote || undefined, idempotencyKey: crypto.randomUUID() }) }))}>Record manual publication</button></div>}
+            {selected.reply?.publication && <div className="publication-record"><Check /><div><strong>Published manually — reported by {selected.reply.publication.recordedBy.name}</strong><p>{selected.reply.publication.verificationStatus.replaceAll('_', ' ')} · {selected.reply.publication.approvalCompliance}</p>{selected.reply.publication.responseUrl && <a href={selected.reply.publication.responseUrl} target="_blank" rel="noreferrer">View recorded response ↗</a>}</div></div>}
+            {selected.status !== 'CLOSED' && selected.status !== 'DISMISSED' && <button className="text-danger" onClick={() => { const reason = prompt('Why are you dismissing this opportunity?'); if (reason) void act(() => api(`/api/leads/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'DISMISSED', reason, expectedVersion: selected.version }) })); }}>Dismiss opportunity</button>}
+            {selected.reply?.revisions?.length > 0 && <details className="revision-history"><summary>Revision and decision history</summary>{selected.reply.revisions.map((revision: any) => <div key={revision.id}><strong>Revision {revision.revisionNumber}</strong><span>{revision.aiGenerated ? 'AI-assisted' : 'Written manually'} · {revision.createdBy.name} · {new Date(revision.createdAt).toLocaleString()}</span></div>)}</details>}
+          </>}
+        </section>
+      </div>
+      {adding && <div className="modal-backdrop" onMouseDown={() => setAdding(false)}><aside className="review-panel" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}><div className="review-header"><h2>Add opportunity</h2><button className="icon-button" onClick={() => setAdding(false)}><X /></button></div><div className="review-body"><label className="editor-field">Platform<select value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}>{['REDDIT','FACEBOOK','LINKEDIN','THREADS','INSTAGRAM','AIRTASKER','FORUM','OTHER'].map((p) => <option key={p}>{p}</option>)}</select></label><label className="editor-field">Public source URL<input value={form.originalUrl} onChange={(e) => setForm({ ...form, originalUrl: e.target.value })} placeholder="https://…" /></label><label className="editor-field">Community or group<input value={form.communityName} onChange={(e) => setForm({ ...form, communityName: e.target.value })} /></label><label className="editor-field">Author display name<input value={form.authorDisplayName} onChange={(e) => setForm({ ...form, authorDisplayName: e.target.value })} /></label><label className="editor-field">Exact source text<textarea rows={10} value={form.postText} onChange={(e) => setForm({ ...form, postText: e.target.value })} /></label></div><div className="review-actions"><button className="dismiss-button" onClick={() => setAdding(false)}>Cancel</button><button className="complete-button" disabled={busy || !form.originalUrl || form.postText.length < 10} onClick={capture}>Capture opportunity</button></div></aside></div>}
+    </Page>
+  );
+}
+
 function InboxPage({ ctx }: { ctx: Ctx }) {
   const [items, setItems] = useState<any[]>([]);
   const [selectedItem, setSelectedItem] = useState<any>(null);
@@ -1068,7 +1663,7 @@ function InboxPage({ ctx }: { ctx: Ctx }) {
                 <small>Source: {sourceLabel(i.source)}</small>
               </div>
               <span className="pill">{i.status.replaceAll('_', ' ')}</span>
-              <button onClick={() => setSelectedItem(i)}>Review</button>
+               <button onClick={() => i.source.startsWith('LEAD:') ? (document.location.href = '/leads') : setSelectedItem(i)}>{i.source.startsWith('LEAD:') ? 'Open lead' : 'Review'}</button>
             </div>
           ))
         ) : (
@@ -1112,7 +1707,116 @@ function RecommendationReview({ item, onClose, onSaved }: any) {
     </div>
   );
 }
-function Page({ title, sub, action, onAction, children }: any) {
+
+function AccountSettings({ ctx }: { ctx: Ctx }) {
+  const [profile, setProfile] = useState({ name: ctx.user.name, email: ctx.user.email, currentPassword: '' });
+  const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [profileState, setProfileState] = useState<{ busy: boolean; message: string; error: string }>({ busy: false, message: '', error: '' });
+  const [passwordState, setPasswordState] = useState<{ busy: boolean; message: string; error: string }>({ busy: false, message: '', error: '' });
+  const [members, setMembers] = useState<any[]>([]);
+  const [memberState, setMemberState] = useState<{ busy: boolean; message: string; error: string; setupUrl: string }>({ busy: false, message: '', error: '', setupUrl: '' });
+  const canManageUsers = members.some((member) => member.userId === ctx.user.id && member.role === 'OWNER');
+
+  useEffect(() => {
+    setProfile({ name: ctx.user.name, email: ctx.user.email, currentPassword: '' });
+  }, [ctx.user.name, ctx.user.email]);
+  const loadMembers = async () => {
+    if (!ctx.selected) return setMembers([]);
+    setMembers(await api<any[]>(`/api/businesses/${ctx.selected.id}/members`));
+  };
+  useEffect(() => { void loadMembers(); }, [ctx.selected?.id]);
+
+  const saveProfile = async (event: any) => {
+    event.preventDefault();
+    setProfileState({ busy: true, message: '', error: '' });
+    try {
+      const result = await api<{ user: Ctx['user'] }>('/api/account/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profile),
+      });
+      ctx.updateUser(result.user);
+      setProfile((value) => ({ ...value, currentPassword: '' }));
+      setProfileState({ busy: false, message: 'Account details updated.', error: '' });
+    } catch (error) {
+      setProfileState({ busy: false, message: '', error: (error as Error).message });
+    }
+  };
+
+  const savePassword = async (event: any) => {
+    event.preventDefault();
+    setPasswordState({ busy: true, message: '', error: '' });
+    try {
+      await api('/api/account/password', { method: 'PATCH', body: JSON.stringify(passwords) });
+      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordState({ busy: false, message: 'Password updated. Use the new password next time you sign in.', error: '' });
+    } catch (error) {
+      setPasswordState({ busy: false, message: '', error: (error as Error).message });
+    }
+  };
+  const createUser = async (event: any) => {
+    event.preventDefault();
+    if (!ctx.selected) return;
+    const form = event.currentTarget;
+    setMemberState({ busy: true, message: '', error: '', setupUrl: '' });
+    try {
+      const result = await api<any>(`/api/businesses/${ctx.selected.id}/members`, {
+        method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(form))),
+      });
+      form.reset();
+      setMemberState({ busy: false, message: result.existingAccount ? 'Existing user added to this business.' : 'User created. A secure setup email has been sent when email delivery is configured.', error: '', setupUrl: result.developmentSetupUrl ?? '' });
+      await loadMembers();
+    } catch (error) {
+      setMemberState({ busy: false, message: '', error: (error as Error).message, setupUrl: '' });
+    }
+  };
+
+  return (
+    <Page title="Account Settings" sub="Manage how you sign in to Click Marketing Agent.">
+      <div className="settings-intro"><ShieldCheck size={20} /><div><strong>Your account is protected</strong><p>Your current password is required before login details can be changed. Passwords are securely hashed and cannot be viewed by Click Marketing Agent.</p></div></div>
+      <div className="settings-grid">
+        <form className="settings-card" onSubmit={saveProfile}>
+          <div className="settings-card-heading"><span><UserRound /></span><div><h2>Profile and login email</h2><p>Update the name shown in the app or the email you use to sign in.</p></div></div>
+          <label>Display name<input value={profile.name} onChange={(event) => setProfile({ ...profile, name: event.target.value })} minLength={2} maxLength={100} required /></label>
+          <label>Login email<input type="email" value={profile.email} onChange={(event) => setProfile({ ...profile, email: event.target.value })} required /></label>
+          <label>Current password<input type="password" autoComplete="current-password" value={profile.currentPassword} onChange={(event) => setProfile({ ...profile, currentPassword: event.target.value })} required /><small>Required to authorise these changes.</small></label>
+          {profileState.error && <p className="settings-message error" role="alert">{profileState.error}</p>}
+          {profileState.message && <p className="settings-message success" role="status"><Check size={15} />{profileState.message}</p>}
+          <button className="primary settings-submit" disabled={profileState.busy}>{profileState.busy ? 'Saving…' : 'Save account details'}</button>
+        </form>
+        <form className="settings-card" onSubmit={savePassword}>
+          <div className="settings-card-heading"><span><KeyRound /></span><div><h2>Change password</h2><p>Choose a new password that you do not use on another service.</p></div></div>
+          <label>Current password<input type="password" autoComplete="current-password" value={passwords.currentPassword} onChange={(event) => setPasswords({ ...passwords, currentPassword: event.target.value })} required /></label>
+          <label>New password<input type="password" autoComplete="new-password" value={passwords.newPassword} onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })} minLength={10} maxLength={128} required /><small>Use at least 10 characters.</small></label>
+          <label>Confirm new password<input type="password" autoComplete="new-password" value={passwords.confirmPassword} onChange={(event) => setPasswords({ ...passwords, confirmPassword: event.target.value })} minLength={10} maxLength={128} required /></label>
+          {passwordState.error && <p className="settings-message error" role="alert">{passwordState.error}</p>}
+          {passwordState.message && <p className="settings-message success" role="status"><Check size={15} />{passwordState.message}</p>}
+          <button className="primary settings-submit" disabled={passwordState.busy || passwords.newPassword !== passwords.confirmPassword}>{passwordState.busy ? 'Updating…' : 'Update password'}</button>
+        </form>
+      </div>
+      <section className="team-settings">
+        <div className="team-settings-heading"><div><span className="eyebrow">BUSINESS ACCESS</span><h2>Users for {ctx.selected?.name ?? 'this business'}</h2><p>Create a user or add an existing account to the active business. Only business owners can do this.</p></div></div>
+        {!ctx.selected ? <div className="empty compact"><UserRound /><p>Create a business before adding users.</p></div> : <div className="team-layout">
+          <div className="member-list">
+            {members.map((member) => <div className="member-row" key={member.userId}><span className="avatar">{member.user.name.split(/\s+/).map((part: string) => part[0]).join('').slice(0, 2).toUpperCase()}</span><div><strong>{member.user.name}</strong><small>{member.user.email}</small></div><span className="pill">{member.role}</span></div>)}
+            {!members.length && <div className="empty compact"><UserRound /><p>No users found for this business.</p></div>}
+          </div>
+          {canManageUsers ? <form className="add-user-form" onSubmit={createUser}>
+            <h3>Add a user</h3><p>A new user receives a time-limited link to set their own password. Existing account holders are added without changing their password.</p>
+            <label>Name<input name="name" minLength={2} maxLength={100} required /></label>
+            <label>Email<input name="email" type="email" required /></label>
+            <label>Access level<select name="role" defaultValue="EDITOR"><option value="MANAGER">Manager</option><option value="EDITOR">Editor</option><option value="VIEWER">Viewer</option></select></label>
+            {memberState.error && <p className="settings-message error" role="alert">{memberState.error}</p>}
+            {memberState.message && <p className="settings-message success" role="status"><Check size={15} />{memberState.message}</p>}
+            {memberState.setupUrl && <a className="development-reset-link" href={memberState.setupUrl}>Open development setup link →</a>}
+            <button className="primary settings-submit" disabled={memberState.busy}>{memberState.busy ? 'Creating…' : 'Create or add user'}</button>
+          </form> : <div className="add-user-form access-note"><ShieldCheck /><h3>Owner access required</h3><p>You can view this business’s users, but only its owner can create or add accounts.</p></div>}
+        </div>}
+      </section>
+    </Page>
+  );
+}
+
+function Page({ title, sub, action, onAction, actionDisabled, actionIcon, children }: any) {
   return (
     <div className="page">
       <div className="page-title">
@@ -1121,8 +1825,8 @@ function Page({ title, sub, action, onAction, children }: any) {
           <p>{sub}</p>
         </div>
         {action && (
-          <button className="primary" onClick={onAction}>
-            <Plus size={17} />
+          <button className="primary" onClick={onAction} disabled={actionDisabled}>
+            {actionIcon ?? <Plus size={17} />}
             {action}
           </button>
         )}
@@ -1131,28 +1835,31 @@ function Page({ title, sub, action, onAction, children }: any) {
     </div>
   );
 }
-const SectionTitle = ({ title, link }: any) => (
+const SectionTitle = ({ title, link, to }: any) => (
   <div className="section-title">
     <h2>{title}</h2>
-    {link && <a>{link} →</a>}
+    {link && to && <Link to={to}>{link} →</Link>}
   </div>
 );
 const Loading = () => <div className="loading">Loading workspace…</div>;
-const Coming = () => (
-  <Page title="Coming soon" sub="This module is reserved for a later milestone.">
-    <div className="empty">
-      <Clock3 />
-      <h3>Architecture ready, feature intentionally deferred</h3>
-    </div>
-  </Page>
-);
 function Auth({ done }: { done: () => void }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+  const [developmentResetUrl, setDevelopmentResetUrl] = useState('');
   const submit = async (e: any) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
+    setError(''); setMessage(''); setDevelopmentResetUrl('');
     try {
+      if (mode === 'forgot') {
+        const result = await api<{ message: string; developmentResetUrl?: string }>('/api/auth/forgot-password', {
+          method: 'POST', body: JSON.stringify(Object.fromEntries(f)),
+        });
+        setMessage(result.message);
+        setDevelopmentResetUrl(result.developmentResetUrl ?? '');
+        return;
+      }
       await api(`/api/auth/${mode}`, {
         method: 'POST',
         body: JSON.stringify(Object.fromEntries(f)),
@@ -1165,10 +1872,7 @@ function Auth({ done }: { done: () => void }) {
   return (
     <div className="auth">
       <div className="auth-art">
-        <div className="brand light">
-          <span>CM</span>
-          <b>Click Marketing Agent</b>
-        </div>
+        <img className="login-logo" src="/brand/click-marketing-agent-logo.webp" alt="Click Marketing Agent — Where marketing just clicks" />
         <h1>
           Marketing clarity,
           <br />
@@ -1180,8 +1884,10 @@ function Auth({ done }: { done: () => void }) {
         </p>
       </div>
       <form onSubmit={submit}>
+        <img className="auth-mobile-logo" src="/brand/click-marketing-agent-logo.webp" alt="Click Marketing Agent" />
         <span className="eyebrow">WELCOME</span>
-        <h2>{mode === 'login' ? 'Sign in to your workspace' : 'Create your workspace'}</h2>
+        <h2>{mode === 'login' ? 'Sign in to your workspace' : mode === 'register' ? 'Create your account' : 'Reset your password'}</h2>
+        {mode === 'forgot' && <p className="auth-explanation">Enter your login email and we’ll send you a secure, time-limited reset link.</p>}
         {mode === 'register' && (
           <label>
             Name
@@ -1192,21 +1898,44 @@ function Auth({ done }: { done: () => void }) {
           Email
           <input name="email" type="email" required />
         </label>
-        <label>
+        {mode !== 'forgot' && <label>
           Password
-          <input name="password" type="password" minLength={10} required />
-        </label>
+          <input name="password" type="password" minLength={10} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required />
+        </label>}
         {error && <p className="error">{error}</p>}
-        <button className="primary">{mode === 'login' ? 'Sign in' : 'Create account'}</button>
-        <p>
+        {message && <p className="auth-success">{message}</p>}
+        {developmentResetUrl && <a className="development-reset-link" href={developmentResetUrl}>Open development reset link →</a>}
+        <button className="primary">{mode === 'login' ? 'Sign in' : mode === 'register' ? 'Create account' : 'Send reset link'}</button>
+        {mode === 'login' && <button type="button" className="auth-text-button" onClick={() => setMode('forgot')}>Forgot your password?</button>}
+        {mode !== 'forgot' ? <p>
           {mode === 'login' ? 'New here?' : 'Already registered?'}{' '}
           <a onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>
             {mode === 'login' ? 'Create an account' : 'Sign in'}
           </a>
-        </p>
+        </p> : <p>Remembered it? <a onClick={() => setMode('login')}>Return to sign in</a></p>}
       </form>
     </div>
   );
+}
+
+function ResetPassword({ done }: { done: () => void }) {
+  const token = new URLSearchParams(window.location.search).get('token') ?? '';
+  const [state, setState] = useState({ busy: false, error: '', message: '' });
+  const submit = async (event: any) => {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget));
+    setState({ busy: true, error: '', message: '' });
+    try {
+      const result = await api<{ message: string }>('/api/auth/reset-password', {
+        method: 'POST', body: JSON.stringify({ token, ...values }),
+      });
+      setState({ busy: false, error: '', message: result.message });
+    } catch (error) {
+      setState({ busy: false, error: (error as Error).message, message: '' });
+    }
+  };
+  const returnToLogin = () => { window.history.replaceState({}, '', '/'); done(); };
+  return <div className="auth reset-auth"><div className="auth-art"><img className="login-logo" src="/brand/click-marketing-agent-logo.webp" alt="Click Marketing Agent" /><h1>Choose a new,<br /><em>secure password.</em></h1><p>This reset link can be used once and expires automatically.</p></div><form onSubmit={submit}><span className="eyebrow">ACCOUNT RECOVERY</span><h2>Set a new password</h2>{!token && <p className="error">This reset link is incomplete. Request a new one from the sign-in screen.</p>}{!state.message && <><label>New password<input name="newPassword" type="password" minLength={10} maxLength={128} autoComplete="new-password" required /></label><label>Confirm new password<input name="confirmPassword" type="password" minLength={10} maxLength={128} autoComplete="new-password" required /></label>{state.error && <p className="error">{state.error}</p>}<button className="primary" disabled={!token || state.busy}>{state.busy ? 'Updating…' : 'Update password'}</button></>}{state.message && <><p className="auth-success">{state.message}</p><button type="button" className="primary" onClick={returnToLogin}>Return to sign in</button></>}</form></div>;
 }
 export function App() {
   const [user, setUser] = useState<any>();
@@ -1228,11 +1957,12 @@ export function App() {
   useEffect(() => {
     load();
   }, []);
+  if (window.location.pathname === '/reset-password') return <ResetPassword done={load} />;
   if (user === undefined) return <Loading />;
   if (!user) return <Auth done={load} />;
   const select = (b: Business) => {
     setSelected(b);
     localStorage.setItem('business', b.id);
   };
-  return <Shell ctx={{ businesses, selected, select, refresh }} />;
+  return <Shell ctx={{ user, businesses, selected, select, refresh, updateUser: setUser }} />;
 }

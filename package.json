@@ -1,8 +1,11 @@
 {
   "name": "click-marketing-agent",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @click/api\" \"npm run dev -w @click/web\"",
     "build": "npm run build -w @click/shared && npm run build -w @click/api && npm run build -w @click/web",
@@ -10,6 +13,7 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck -ws --if-present",
     "format": "prettier --write .",
+    "version:bump": "node scripts/bump-build.mjs",
     "db:setup": "npm run db:deploy -w @click/api && npm run db:seed",
     "db:migrate": "npm run db:migrate -w @click/api",
     "db:deploy": "npm run db:deploy -w @click/api",
@@ -23,5 +27,7 @@
     "prettier": "^3.7.4",
     "typescript-eslint": "^8.49.0"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

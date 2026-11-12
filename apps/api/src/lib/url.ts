@@ -37,7 +37,7 @@ export const normaliseUrl = (raw: string, base?: string) => {
   )
     url.port = '';
   for (const key of [...url.searchParams.keys()])
-    if (/^(utm_|fbclid|gclid)/i.test(key)) url.searchParams.delete(key);
+    if (/^(utm_|fbclid|gclid|_cma_|nocache)/i.test(key)) url.searchParams.delete(key);
   if (url.pathname !== '/') url.pathname = url.pathname.replace(/\/+$/, '');
   return url.toString();
 };

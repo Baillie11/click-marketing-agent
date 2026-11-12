@@ -10,4 +10,5 @@ const shutdown = async () => {
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
-await app.listen({ port: config.API_PORT, host: '0.0.0.0' });
+const port = Number(process.env.PORT ?? config.API_PORT);
+await app.listen({ port, host: '0.0.0.0' });

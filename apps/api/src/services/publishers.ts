@@ -1,3 +1,7 @@
+import { db } from '../db.js';
+import { decryptConnectorSecret } from './connector-secret.js';
+import { WordPressPublisher } from './wordpress-connector.js';
+
 export type WebsiteField = 'SEO_TITLE' | 'META_DESCRIPTION' | 'H1' | 'H2' | 'ALT_TEXT' | 'CONTENT' | 'INTERNAL_LINK';
 
 export type ApplyWebsiteChange = {
@@ -20,10 +24,29 @@ export interface WebsitePublisher {
   revert?(platformRevisionId: string): Promise<void>;
 }
 
-// Provider implementations are intentionally registered only after their OAuth/application-token
-// flow and field mapping have been verified. This prevents a configured toggle from pretending that
-// a live website was changed when no safe publishing adapter exists.
-export const getPublisher = (websiteId: string): WebsitePublisher | null => {
-  void websiteId;
+export const getPublisher = async (
+  websiteId: string,
+  encryptionKey?: string,
+): Promise<WebsitePublisher | null> => {
+  if (!encryptionKey) return null;
+  const website = await db.website.findUnique({ where: { id: websiteId } });
+  if (
+    !website ||
+    website.connectionStatus !== 'CONNECTED' ||
+    !website.connectionSecret ||
+    !website.connectionUsername
+  ) {
+    return null;
+  }
+  if (website.connectionProvider === 'WORDPRESS') {
+    try {
+      const applicationPassword = decryptConnectorSecret(website.connectionSecret, encryptionKey);
+      const targetBaseUrl = website.connectionBaseUrl ?? website.baseUrl;
+      const allowLocalDevelopment = website.connectionTarget === 'STAGING' && process.env.NODE_ENV !== 'production';
+      return new WordPressPublisher(targetBaseUrl, website.connectionUsername, applicationPassword, allowLocalDevelopment);
+    } catch {
+      return null;
+    }
+  }
   return null;
 };

@@ -39,7 +39,11 @@ Each audit is an immutable snapshot. The Website & SEO response selects only the
 
 ## Guarded website changes
 
-Each website stores an automation mode and an allow-list of change categories. A generated SEO recommendation may be converted into a `WebsiteChange` proposal containing the target URL, field, current value and proposed value. Recommend-only and approval-required modes are available now. Automatic publishing is rejected unless the website is connected, and the publisher registry currently exposes no live adapter. Provider implementations must use revocable, least-privilege tokens, re-read the target field before writing, record the platform revision, and support verification and rollback where the platform allows it.
+Each website stores an automation mode and an allow-list of change categories. The live `baseUrl` remains the audit source while `stagingBaseUrl` is a separate execution target. The WordPress connector verifies a dedicated Application Password against the staging REST API, stores it with AES-256-GCM encryption, supports retesting, and deletes the encrypted credential on disconnect. Localhost targets are accepted only in development, the staging hostname must differ from the live hostname, and all execution routes independently reject non-staging connections. Before writing, the adapter re-reads the target field and rejects stale proposals; after writing, it reads the field again and records verification evidence. Live publishing remains disabled.
+
+## Visual consistency audits
+
+Visual audits use the URLs from the latest completed crawl, prioritise the home, About and Contact pages, and cap each run with `VISUAL_AUDIT_MAX_PAGES`. A locally installed Chrome or Edge browser captures each selected page at desktop and mobile viewport sizes. The OpenAI Responses API compares those labelled screenshots using a strict structured-output schema. Results are stored separately from technical SEO findings because the visual score is an evidence-led design consistency assessment, not a search-ranking or technical-health score. Screenshots are processed in memory and are not retained in the database.
 
 ## Content Library workflow
 
