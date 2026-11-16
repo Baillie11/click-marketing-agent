@@ -1784,12 +1784,14 @@ export const buildApp = async (config: Config) => {
           businessId: request.params.id,
           updatedById: request.user.sub,
           ...input,
-          nextRunAt: input.enabled ? nextDiscoveryRun(input.frequency, now) : null,
+          // Scheduled profiles should be eligible for the next worker pass.
+          // Previously a new profile waited a full day before its first scan.
+          nextRunAt: input.enabled && input.frequency !== 'MANUAL' ? now : null,
         },
         update: {
           updatedById: request.user.sub,
           ...input,
-          nextRunAt: input.enabled ? nextDiscoveryRun(input.frequency, now) : null,
+          nextRunAt: input.enabled && input.frequency !== 'MANUAL' ? now : null,
         },
       });
       await logActivity('lead.discovery_profile_saved', {

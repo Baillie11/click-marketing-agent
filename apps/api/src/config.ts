@@ -11,6 +11,7 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default('gpt-5-mini'),
   LEAD_DISCOVERY_CRON_SECRET: z.string().min(32).optional(),
+  LEAD_DISCOVERY_POLL_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   CONNECTOR_ENCRYPTION_KEY: z.string().optional(),
   CRAWLER_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(50),
   CRAWLER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(10000),
